@@ -1,0 +1,546 @@
+/* Lakshmi Ganapati — premium glass login */
+
+.chitti-login {
+  --accent: #f97316;
+  --accent-hover: #ea580c;
+  --accent-glow: rgba(249, 115, 22, 0.45);
+  --glass-bg: rgba(255, 255, 255, 0.07);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --text: #ffffff;
+  --text-soft: rgba(255, 255, 255, 0.72);
+  --input-bg: rgba(0, 0, 0, 0.35);
+  --font: 'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif;
+
+  position: relative;
+  min-height: 100vh;
+  font-family: var(--font);
+  color: var(--text);
+  overflow-x: hidden;
+  background: #070b14;
+}
+
+/* —— Cinematic background —— */
+.chitti-login__scene {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 70% 40%, rgba(124, 58, 237, 0.25), transparent 50%),
+    radial-gradient(ellipse 60% 50% at 20% 80%, rgba(249, 115, 22, 0.2), transparent 45%),
+    linear-gradient(160deg, #0a0f1c 0%, #151030 35%, #0f172a 65%, #1a1208 100%);
+}
+
+.chitti-login__scene::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.4;
+  mask-image: radial-gradient(ellipse at center, black 20%, transparent 75%);
+}
+
+.chitti-login__scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    rgba(7, 11, 20, 0.85) 0%,
+    rgba(7, 11, 20, 0.5) 50%,
+    rgba(7, 11, 20, 0.35) 100%
+  );
+}
+
+.chitti-bokeh {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  animation: bokeh-float 14s ease-in-out infinite;
+}
+
+.chitti-bokeh.b1 {
+  width: 280px;
+  height: 280px;
+  background: #f97316;
+  opacity: 0.35;
+  top: 15%;
+  left: 8%;
+}
+
+.chitti-bokeh.b2 {
+  width: 200px;
+  height: 200px;
+  background: #eab308;
+  opacity: 0.25;
+  top: 60%;
+  left: 25%;
+  animation-delay: -3s;
+}
+
+.chitti-bokeh.b3 {
+  width: 320px;
+  height: 320px;
+  background: #7c3aed;
+  opacity: 0.2;
+  bottom: 10%;
+  right: 20%;
+  animation-delay: -6s;
+}
+
+.chitti-bokeh.b4 {
+  width: 150px;
+  height: 150px;
+  background: #14b8a6;
+  opacity: 0.22;
+  top: 30%;
+  right: 35%;
+  animation-delay: -2s;
+}
+
+.chitti-bokeh.b5 {
+  width: 100px;
+  height: 100px;
+  background: #f43f5e;
+  opacity: 0.18;
+  top: 8%;
+  right: 15%;
+  animation-delay: -8s;
+}
+
+.chitti-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.5) 100%);
+}
+
+@keyframes bokeh-float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(20px, -25px) scale(1.08);
+  }
+}
+
+/* —— Top nav —— */
+.chitti-login__nav {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 2.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.chitti-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.chitti-brand__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 1.1rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--accent), #fb923c);
+  border-radius: 10px;
+  color: #fff;
+}
+
+.chitti-brand__name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.chitti-nav-links:not(.chitti-nav-links--mobile) {
+  display: none;
+  gap: 1.75rem;
+  font-size: 0.9rem;
+  color: var(--text-soft);
+}
+
+.chitti-nav-links--mobile {
+  gap: 1rem;
+  font-size: 0.85rem;
+}
+
+.chitti-nav-links a,
+.chitti-nav-links span {
+  color: var(--text-soft);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.chitti-nav-links a:hover,
+.chitti-nav-links span:hover {
+  color: var(--text);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+.chitti-nav-links--mobile {
+  display: flex;
+}
+
+@media (min-width: 900px) {
+  .chitti-nav-links--mobile {
+    display: none !important;
+  }
+
+  .chitti-login__nav .chitti-nav-links:not(.chitti-nav-links--mobile) {
+    display: flex;
+  }
+}
+
+/* —— Body split —— */
+.chitti-login__body {
+  position: relative;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 1.5rem 3rem;
+  min-height: calc(100vh - 80px);
+  align-items: start;
+  padding-bottom: 2.5rem;
+}
+
+@media (min-width: 960px) {
+  .chitti-login__body {
+    grid-template-columns: 1.1fr 0.9fr;
+    padding: 0 2.5rem 3rem;
+    gap: 3rem;
+  }
+}
+
+.chitti-login__aside {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+/* —— Glass panel —— */
+.chitti-panel-wrap {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  animation: panel-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.chitti-glass {
+  width: 100%;
+  max-width: 420px;
+  padding: 2.25rem 2rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 28px;
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+    0 40px 80px rgba(0, 0, 0, 0.45),
+    0 0 60px rgba(249, 115, 22, 0.08);
+}
+
+.chitti-glass__inner {
+  animation: glass-content 0.4s ease-out;
+}
+
+@keyframes glass-content {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chitti-glass__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 0.35rem;
+}
+
+.chitti-glass__sub {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-soft);
+  margin-bottom: 1.75rem;
+}
+
+.chitti-glass__foot {
+  text-align: center;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.45);
+  margin-top: 1.5rem;
+}
+
+/* Portal picker */
+.chitti-portals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+}
+
+.chitti-portal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 1.25rem 0.75rem;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text);
+  transition:
+    transform 0.25s,
+    border-color 0.25s,
+    background 0.25s,
+    box-shadow 0.25s;
+}
+
+.chitti-portal:hover {
+  transform: translateY(-3px);
+  border-color: rgba(249, 115, 22, 0.5);
+  background: rgba(249, 115, 22, 0.1);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+
+.chitti-portal__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: var(--accent);
+}
+
+.chitti-portal__icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.chitti-portal__label {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.chitti-portal__hint {
+  font-size: 0.68rem;
+  color: var(--text-soft);
+  text-align: center;
+  line-height: 1.3;
+}
+
+/* Form */
+.chitti-form__back {
+  background: none;
+  border: none;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 1rem;
+  transition: color 0.2s;
+}
+
+.chitti-form__back:hover {
+  color: var(--accent);
+}
+
+.chitti-form__error {
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 12px;
+  color: #fecaca;
+}
+
+.chitti-field {
+  display: block;
+  margin-bottom: 1.15rem;
+}
+
+.chitti-field > span {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.45rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.chitti-field input {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.chitti-field input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.chitti-field input:focus {
+  outline: none;
+  border-color: rgba(249, 115, 22, 0.6);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+}
+
+.chitti-field__pass {
+  position: relative;
+}
+
+.chitti-field__pass input {
+  padding-right: 3.5rem;
+}
+
+.chitti-field__toggle {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.chitti-form__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.35rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chitti-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.chitti-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.chitti-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 1rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: inherit;
+  color: #fff;
+  background: linear-gradient(135deg, #fb923c 0%, var(--accent) 50%, #ea580c 100%);
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  box-shadow: 0 8px 32px var(--accent-glow);
+  transition: transform 0.25s, box-shadow 0.25s, opacity 0.2s;
+}
+
+.chitti-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 40px var(--accent-glow);
+}
+
+.chitti-btn:disabled {
+  opacity: 0.8;
+  cursor: wait;
+}
+
+.chitti-btn__arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 1.1rem;
+  font-weight: 400;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+}
+
+.chitti-demo {
+  text-align: center;
+  margin-top: 1.25rem;
+  font-size: 0.78rem;
+  color: var(--text-soft);
+}
+
+.chitti-demo strong {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+}
+
+@media (max-width: 959px) {
+  .chitti-login__nav {
+    padding: 1rem 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chitti-bokeh,
+  .chitti-panel-wrap,
+  .chitti-glass__inner {
+    animation: none;
+  }
+
+  .chitti-portal:hover,
+  .chitti-btn:hover:not(:disabled) {
+    transform: none;
+  }
+}
