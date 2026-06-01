@@ -11,6 +11,21 @@ const clientSchema = new mongoose.Schema(
     weeklyPayment: { type: Number, required: true, min: 0 },
     username: { type: String, required: true, unique: true, trim: true, lowercase: true },
     password: { type: String, required: true },
+    profilePhoto: { type: String, default: '' },
+    renewalHistory: [
+      {
+        renewedAt: { type: Date, default: Date.now },
+        previousAmountTaken: { type: Number, min: 0 },
+        previousDateTaken: { type: Date },
+        previousInterestRate: { type: Number, min: 0 },
+        previousWeeklyPayment: { type: Number, min: 0 },
+        newAmountTaken: { type: Number, min: 0 },
+        newDateTaken: { type: Date },
+        newInterestRate: { type: Number, min: 0 },
+        newWeeklyPayment: { type: Number, min: 0 },
+        note: { type: String, trim: true, default: '' },
+      },
+    ],
   },
   { timestamps: true }
 );

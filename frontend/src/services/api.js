@@ -1,7 +1,7 @@
 const API = '/api';
 
 function getToken() {
-  return localStorage.getItem('token');
+  return sessionStorage.getItem('token') || localStorage.getItem('token');
 }
 
 async function request(url, options = {}) {
@@ -34,9 +34,43 @@ export const api = {
   login: (body) => request('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   getCustomerProfile: () => request('/customer/profile'),
   getCustomerPayments: () => request('/customer/payments'),
-  getClients: () => request('/manager/clients'),
+  getCustomerReminders: () => request('/customer/reminders'),
+  uploadPaymentScreenshot: (paymentId, screenshot) =>
+    request(`/customer/payments/${paymentId}/screenshot`, {
+      method: 'POST',
+      body: JSON.stringify({ screenshot }),
+    }),
+  uploadCustomerPhoto: (photo) =>
+    request('/customer/profile/photo', {
+      method: 'PATCH',
+      body: JSON.stringify({ photo }),
+    }),
+  removeCustomerPhoto: () =>
+    request('/customer/profile/photo', { method: 'DELETE' }),
+  getClients: (q) => {
+    const query = q ? `?q=${encodeURIComponent(q)}` : '';
+    return request(`/manager/clients${query}`);
+  },
   addClient: (body) => request('/manager/clients', { method: 'POST', body: JSON.stringify(body) }),
+  updateClient: (id, body) =>
+    request(`/manager/clients/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  renewClient: (id, body) =>
+    request(`/manager/clients/${id}/renew`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  deleteClient: (id) => request(`/manager/clients/${id}`, { method: 'DELETE' }),
+  getManagerDashboard: () => request('/manager/dashboard'),
   getWeeklyStatus: () => request('/manager/weekly-status'),
+  getPaymentApprovals: () => request('/manager/payment-approvals'),
+  reviewPaymentApproval: (paymentId, action, managerNote = '') =>
+    request(`/manager/payment-approvals/${paymentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action, managerNote }),
+    }),
   updatePayment: (paymentId, paid) =>
     request(`/manager/payments/${paymentId}`, {
       method: 'PATCH',
@@ -44,6 +78,13 @@ export const api = {
     }),
   sendReminder: (paymentId) =>
     request(`/manager/send-reminder/${paymentId}`, { method: 'POST' }),
+  sendBulkReminders: () =>
+    request('/manager/send-reminders/bulk', { method: 'POST' }),
+  getDefaulters: () => request('/manager/defaulters'),
+  getDailyCollectionsReport: (date) =>
+    request(`/manager/reports/daily-collections?date=${date || ''}`),
+  getMonthlyProfitReport: (month) =>
+    request(`/manager/reports/monthly-profit?month=${month || ''}`),
   getCollections: () => request('/manager/collections'),
   addCollection: (body) =>
     request('/manager/collections', { method: 'POST', body: JSON.stringify(body) }),

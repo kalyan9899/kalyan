@@ -1,12 +1,16 @@
 import './LoginHero.css';
+import { LOGO_SRC, BRAND_NAME } from '../constants/brand';
 
 export default function LoginHero() {
   return (
     <section className="lg-hero">
       <div className="lg-hero__copy">
+        <div className="lg-hero__brand-showcase">
+          <img src={LOGO_SRC} alt={`${BRAND_NAME} Finance`} />
+        </div>
         <div className="lg-hero__brand-mini">
-          <span className="lg-hero__brand-icon">LG</span>
-          <span>Lakshmi Ganapati</span>
+          <img src={LOGO_SRC} alt="" className="lg-hero__brand-logo" />
+          <span>{BRAND_NAME}</span>
         </div>
 
         <h1 className="lg-hero__title">
@@ -89,7 +93,7 @@ export default function LoginHero() {
                 <span className="lg-dash__eyebrow">Dashboard</span>
                 <strong>Lakshmi Ganapati</strong>
               </div>
-              <div className="lg-dash__avatar">LG</div>
+              <img src={LOGO_SRC} alt="" className="lg-dash__avatar lg-dash__avatar--logo" />
             </header>
 
             <div className="lg-dash__metrics">

@@ -1,6 +1,9 @@
+import { LOGO_SRC } from '../constants/brand';
+
 export default function DashboardBg() {
   return (
     <div className="dash-bg" aria-hidden="true">
+      <div className="dash-bg-watermark" style={{ backgroundImage: `url(${LOGO_SRC})` }} />
       <div className="dash-bg-orb dash-orb-1" />
       <div className="dash-bg-orb dash-orb-2" />
       <div className="dash-bg-orb dash-orb-3" />

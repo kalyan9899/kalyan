@@ -1,546 +1,726 @@
-/* Lakshmi Ganapati — premium glass login */
+/* Lakshmi Ganapati Finance — premium landing & login */
 
-.chitti-login {
-  --accent: #f97316;
-  --accent-hover: #ea580c;
-  --accent-glow: rgba(249, 115, 22, 0.45);
-  --glass-bg: rgba(255, 255, 255, 0.07);
-  --glass-border: rgba(255, 255, 255, 0.14);
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+.lg-home {
+  --green-deep: #0a2e1a;
+  --green-mid: #14532d;
+  --green-card: #0f3d24;
+  --gold: #d4a012;
+  --gold-light: #fbbf24;
+  --gold-glow: rgba(251, 191, 36, 0.45);
   --text: #ffffff;
-  --text-soft: rgba(255, 255, 255, 0.72);
-  --input-bg: rgba(0, 0, 0, 0.35);
-  --font: 'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif;
+  --text-soft: rgba(255, 255, 255, 0.75);
+  --font-serif: 'Cormorant Garamond', Georgia, serif;
+  --font-sans: 'DM Sans', system-ui, sans-serif;
 
   position: relative;
   min-height: 100vh;
-  font-family: var(--font);
+  font-family: var(--font-sans);
   color: var(--text);
+  background: linear-gradient(145deg, #061a10 0%, var(--green-deep) 30%, #0d2818 70%, #051408 100%);
   overflow-x: hidden;
-  background: #070b14;
 }
 
-/* —— Cinematic background —— */
-.chitti-login__scene {
+.lg-home--manager {
+  --green-deep: #072514;
+  --green-mid: #11592f;
+  --green-card: #0b3d24;
+  --gold: #d4a012;
+  --gold-light: #f7c948;
+  --gold-glow: rgba(247, 201, 72, 0.42);
+  background:
+    radial-gradient(circle at 78% 16%, rgba(247, 201, 72, 0.22), transparent 34%),
+    linear-gradient(145deg, #03150b 0%, #072514 34%, #0b3d24 68%, #041108 100%);
+}
+
+.lg-home--customer {
+  --green-deep: #063737;
+  --green-mid: #0f766e;
+  --green-card: #07504c;
+  --gold: #d4a012;
+  --gold-light: #f6d365;
+  --gold-glow: rgba(20, 184, 166, 0.34);
+  background:
+    radial-gradient(circle at 74% 18%, rgba(246, 211, 101, 0.2), transparent 32%),
+    linear-gradient(145deg, #031a1a 0%, #063737 32%, #07504c 66%, #05231e 100%);
+}
+
+/* —— Background —— */
+.lg-home__bg {
   position: fixed;
   inset: 0;
   z-index: 0;
-  background:
-    radial-gradient(ellipse 80% 60% at 70% 40%, rgba(124, 58, 237, 0.25), transparent 50%),
-    radial-gradient(ellipse 60% 50% at 20% 80%, rgba(249, 115, 22, 0.2), transparent 45%),
-    linear-gradient(160deg, #0a0f1c 0%, #151030 35%, #0f172a 65%, #1a1208 100%);
+  pointer-events: none;
 }
 
-.chitti-login__scene::before {
-  content: '';
+.lg-home__watermark {
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-  background-size: 32px 32px;
-  opacity: 0.4;
-  mask-image: radial-gradient(ellipse at center, black 20%, transparent 75%);
+  background-position: center 45%;
+  background-repeat: no-repeat;
+  background-size: min(520px, 75vw);
+  opacity: 0.07;
+  filter: saturate(0.9);
 }
 
-.chitti-login__scene::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    105deg,
-    rgba(7, 11, 20, 0.85) 0%,
-    rgba(7, 11, 20, 0.5) 50%,
-    rgba(7, 11, 20, 0.35) 100%
-  );
-}
-
-.chitti-bokeh {
+.lg-home__glow {
   position: absolute;
   border-radius: 50%;
-  filter: blur(60px);
-  animation: bokeh-float 14s ease-in-out infinite;
+  filter: blur(80px);
 }
 
-.chitti-bokeh.b1 {
-  width: 280px;
-  height: 280px;
-  background: #f97316;
-  opacity: 0.35;
-  top: 15%;
-  left: 8%;
-}
-
-.chitti-bokeh.b2 {
-  width: 200px;
-  height: 200px;
-  background: #eab308;
-  opacity: 0.25;
-  top: 60%;
-  left: 25%;
-  animation-delay: -3s;
-}
-
-.chitti-bokeh.b3 {
-  width: 320px;
-  height: 320px;
-  background: #7c3aed;
-  opacity: 0.2;
-  bottom: 10%;
-  right: 20%;
-  animation-delay: -6s;
-}
-
-.chitti-bokeh.b4 {
-  width: 150px;
-  height: 150px;
-  background: #14b8a6;
-  opacity: 0.22;
-  top: 30%;
-  right: 35%;
-  animation-delay: -2s;
-}
-
-.chitti-bokeh.b5 {
-  width: 100px;
-  height: 100px;
-  background: #f43f5e;
-  opacity: 0.18;
-  top: 8%;
+.lg-home__glow--1 {
+  width: 400px;
+  height: 400px;
+  background: var(--gold-glow);
+  top: 10%;
   right: 15%;
-  animation-delay: -8s;
+  opacity: 0.25;
+  animation: lg-pulse 8s ease-in-out infinite;
 }
 
-.chitti-vignette {
+.lg-home__glow--2 {
+  width: 300px;
+  height: 300px;
+  background: rgba(34, 197, 94, 0.2);
+  bottom: 20%;
+  left: 5%;
+  animation: lg-pulse 10s ease-in-out infinite reverse;
+}
+
+.lg-home__sparkles {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.5) 100%);
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(251, 191, 36, 0.8), transparent),
+    radial-gradient(1px 1px at 60% 70%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1.5px 1.5px at 80% 20%, rgba(251, 191, 36, 0.7), transparent),
+    radial-gradient(1px 1px at 40% 80%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 90% 60%, rgba(251, 191, 36, 0.6), transparent);
+  background-size: 100% 100%;
+  opacity: 0.6;
+  animation: lg-sparkle 6s ease-in-out infinite;
 }
 
-@keyframes bokeh-float {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  50% {
-    transform: translate(20px, -25px) scale(1.08);
-  }
+.lg-home__leaves {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 280px;
+  height: 200px;
+  background: radial-gradient(ellipse at bottom left, rgba(34, 197, 94, 0.15), transparent 70%);
+  opacity: 0.8;
 }
 
-/* —— Top nav —— */
-.chitti-login__nav {
+.lg-home__leaves::before {
+  content: '🌿';
+  position: absolute;
+  bottom: 2rem;
+  left: 2rem;
+  font-size: 3rem;
+  opacity: 0.35;
+  transform: rotate(-25deg);
+}
+
+@keyframes lg-pulse {
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(1.08); }
+}
+
+@keyframes lg-sparkle {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.75; }
+}
+
+/* —— Header —— */
+.lg-home__nav {
   position: relative;
   z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.25rem 2.5rem;
-  flex-wrap: wrap;
   gap: 1rem;
+  padding: 1rem 2rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid rgba(251, 191, 36, 0.12);
 }
 
-.chitti-brand {
+.lg-home__brand {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.75rem;
   text-decoration: none;
   color: var(--text);
 }
 
-.chitti-brand__icon {
+.lg-home__brand-logo {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 3px;
+  box-shadow: 0 0 20px var(--gold-glow);
+}
+
+.lg-home__brand strong {
+  display: block;
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  color: var(--gold-light);
+  line-height: 1.25;
+}
+
+.lg-home__brand span {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  color: var(--text-soft);
+  text-transform: uppercase;
+}
+
+.lg-home__links {
+  display: none;
+  align-items: center;
+  gap: 1.75rem;
+}
+
+.lg-home__links a {
+  color: var(--text-soft);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: color 0.2s;
+  position: relative;
+  padding-bottom: 0.25rem;
+}
+
+.lg-home__links a:hover,
+.lg-home__links a.active {
+  color: var(--gold-light);
+}
+
+.lg-home__links a.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--gold-light);
+  border-radius: 2px;
+}
+
+.lg-home__mgr-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1.1rem;
+  background: transparent;
+  border: 1.5px solid var(--gold-light);
+  border-radius: 999px;
+  color: var(--gold-light);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.lg-home__mgr-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.lg-home__mgr-btn:hover {
+  background: rgba(251, 191, 36, 0.12);
+  box-shadow: 0 0 24px var(--gold-glow);
+}
+
+/* —— Main layout —— */
+.lg-home__main {
+  position: relative;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: center;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2.5rem 2rem 3rem;
+  min-height: calc(100vh - 200px);
+}
+
+.lg-home__hero h1 {
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 4.5vw, 3.25rem);
+  font-weight: 700;
+  line-height: 1.15;
+  margin: 0 0 0.75rem;
+}
+
+.lg-home__hero h1 .gold {
+  color: var(--gold-light);
+  display: block;
+}
+
+.lg-home__hero h1 .white {
+  color: var(--text);
+}
+
+.lg-home__tagline {
+  font-size: 1.15rem;
+  color: var(--gold-light);
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+
+.lg-home__desc {
+  font-size: 0.95rem;
+  color: var(--text-soft);
+  line-height: 1.65;
+  max-width: 480px;
+  margin: 0 0 2rem;
+}
+
+.lg-home__features {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  max-width: 520px;
+}
+
+.lg-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.lg-feature__icon {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  font-size: 1.1rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, var(--accent), #fb923c);
-  border-radius: 10px;
-  color: #fff;
+  border-radius: 50%;
+  border: 1.5px solid var(--gold-light);
+  color: var(--gold-light);
+  background: rgba(251, 191, 36, 0.08);
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.2);
 }
 
-.chitti-brand__name {
-  font-weight: 700;
-  font-size: 1.05rem;
-  letter-spacing: -0.02em;
+.lg-feature__icon svg {
+  width: 22px;
+  height: 22px;
 }
 
-.chitti-nav-links:not(.chitti-nav-links--mobile) {
-  display: none;
-  gap: 1.75rem;
-  font-size: 0.9rem;
+.lg-feature strong {
+  display: block;
+  font-size: 0.88rem;
+  color: var(--text);
+  margin-bottom: 0.15rem;
+}
+
+.lg-feature span {
+  font-size: 0.75rem;
   color: var(--text-soft);
 }
 
-.chitti-nav-links--mobile {
+/* —— Login card —— */
+.lg-home__login {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.lg-login-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 1.75rem 1.5rem;
+  background: linear-gradient(160deg, rgba(15, 61, 36, 0.95) 0%, rgba(10, 46, 26, 0.98) 100%);
+  border: 1.5px solid var(--gold-light);
+  border-radius: 20px;
+  box-shadow:
+    0 0 40px rgba(251, 191, 36, 0.15),
+    0 24px 48px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.lg-login-card--manager {
+  background:
+    linear-gradient(160deg, rgba(13, 75, 42, 0.96) 0%, rgba(4, 28, 15, 0.98) 100%);
+  border-color: #f7c948;
+  box-shadow:
+    0 0 42px rgba(247, 201, 72, 0.18),
+    0 24px 50px rgba(0, 0, 0, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.lg-login-card--customer {
+  background:
+    linear-gradient(160deg, rgba(9, 88, 82, 0.96) 0%, rgba(4, 36, 35, 0.98) 100%);
+  border-color: #f6d365;
+  box-shadow:
+    0 0 42px rgba(20, 184, 166, 0.2),
+    0 24px 50px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.lg-login-card__head {
+  display: flex;
+  align-items: center;
   gap: 1rem;
-  font-size: 0.85rem;
+  margin-bottom: 1.25rem;
+  text-align: left;
 }
 
-.chitti-nav-links a,
-.chitti-nav-links span {
-  color: var(--text-soft);
-  text-decoration: none;
-  cursor: pointer;
-  transition: color 0.2s;
+.lg-login-card__logo-ring {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1.5px solid var(--gold-light);
+  background: rgba(255, 255, 255, 0.96);
+  padding: 3px;
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.25);
 }
 
-.chitti-nav-links a:hover,
-.chitti-nav-links span:hover {
+.lg-login-card__logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 50%;
+}
+
+.lg-login-card__head h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
   color: var(--text);
 }
 
-html {
-  scroll-behavior: smooth;
+.lg-login-card__head p {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-soft);
 }
 
-.chitti-nav-links--mobile {
+.lg-login-card__error {
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 1rem;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 8px;
+  color: #fecaca;
+  font-size: 0.85rem;
+}
+
+.lg-login-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+  padding: 0 0.85rem;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 10px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.lg-login-field:focus-within {
+  border-color: var(--gold-light);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.15);
+}
+
+.lg-login-field__icon {
+  color: var(--gold-light);
   display: flex;
 }
 
-@media (min-width: 900px) {
-  .chitti-nav-links--mobile {
-    display: none !important;
-  }
+.lg-login-field__icon svg {
+  width: 18px;
+  height: 18px;
+}
 
-  .chitti-login__nav .chitti-nav-links:not(.chitti-nav-links--mobile) {
+.lg-login-field input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 0.85rem 0;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.lg-login-field input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.lg-login-field__eye {
+  background: none;
+  border: none;
+  color: var(--text-soft);
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+}
+
+.lg-login-field__eye svg {
+  width: 18px;
+  height: 18px;
+}
+
+.lg-login-form__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.1rem;
+  font-size: 0.8rem;
+}
+
+.lg-login-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.lg-login-check input {
+  accent-color: var(--gold-light);
+}
+
+.lg-login-forgot {
+  background: none;
+  border: none;
+  color: var(--gold-light);
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.lg-login-submit {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  background: linear-gradient(135deg, #ca8a04, #eab308, #fbbf24);
+  border: none;
+  border-radius: 10px;
+  color: #14532d;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(251, 191, 36, 0.35);
+  transition: transform 0.15s, filter 0.15s;
+}
+
+.lg-login-submit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.05);
+}
+
+.lg-login-submit:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+.lg-login-submit svg {
+  width: 20px;
+  height: 20px;
+}
+
+.lg-login-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.1rem 0;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+}
+
+.lg-login-divider::before,
+.lg-login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.lg-login-alt {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: 1.5px solid var(--gold-light);
+  border-radius: 10px;
+  color: var(--gold-light);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.lg-login-alt svg {
+  width: 18px;
+  height: 18px;
+}
+
+.lg-login-alt:hover {
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.lg-login-secure {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lg-login-secure svg {
+  width: 28px;
+  height: 28px;
+  color: var(--gold-light);
+  flex-shrink: 0;
+}
+
+.lg-login-secure strong {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.lg-login-secure span {
+  font-size: 0.72rem;
+  color: var(--text-soft);
+}
+
+/* —— Footer banner —— */
+.lg-home__footer-banner {
+  position: relative;
+  z-index: 5;
+  max-width: 720px;
+  margin: 0 auto 2rem;
+  padding: 1rem 1.5rem;
+  text-align: center;
+  border: 1.5px solid var(--gold-light);
+  border-radius: 14px;
+  background: rgba(15, 61, 36, 0.6);
+  box-shadow: 0 0 30px rgba(251, 191, 36, 0.1);
+}
+
+.lg-home__footer-icon {
+  display: block;
+  font-size: 1.25rem;
+  color: var(--gold-light);
+  margin-bottom: 0.35rem;
+}
+
+.lg-home__footer-banner p {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  color: var(--gold-light);
+  line-height: 1.4;
+}
+
+/* —— Anchor sections —— */
+.lg-home__section {
+  position: relative;
+  z-index: 5;
+  max-width: 800px;
+  margin: 0 auto 3rem;
+  padding: 0 2rem;
+  text-align: center;
+}
+
+.lg-home__section h2 {
+  font-family: var(--font-serif);
+  color: var(--gold-light);
+  font-size: 1.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.lg-home__section p,
+.lg-home__section li {
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.lg-home__section ul {
+  list-style: none;
+  padding: 0;
+}
+
+.lg-home__section li {
+  padding: 0.35rem 0;
+}
+
+.lg-home__section--contact a {
+  color: var(--gold-light);
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* —— Responsive —— */
+@media (min-width: 900px) {
+  .lg-home__links {
     display: flex;
   }
 }
 
-/* —— Body split —— */
-.chitti-login__body {
-  position: relative;
-  z-index: 5;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 2rem;
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 1.5rem 3rem;
-  min-height: calc(100vh - 80px);
-  align-items: start;
-  padding-bottom: 2.5rem;
-}
-
-@media (min-width: 960px) {
-  .chitti-login__body {
-    grid-template-columns: 1.1fr 0.9fr;
-    padding: 0 2.5rem 3rem;
-    gap: 3rem;
+@media (max-width: 960px) {
+  .lg-home__main {
+    grid-template-columns: 1fr;
+    padding: 1.5rem 1.25rem 2rem;
+    min-height: auto;
   }
-}
 
-.chitti-login__aside {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-}
-
-/* —— Glass panel —— */
-.chitti-panel-wrap {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  animation: panel-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
-}
-
-@keyframes panel-in {
-  from {
-    opacity: 0;
-    transform: translateY(24px) scale(0.98);
+  .lg-home__hero {
+    text-align: center;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
+
+  .lg-home__desc {
+    margin-left: auto;
+    margin-right: auto;
   }
-}
 
-.chitti-glass {
-  width: 100%;
-  max-width: 420px;
-  padding: 2.25rem 2rem;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 28px;
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
-    0 40px 80px rgba(0, 0, 0, 0.45),
-    0 0 60px rgba(249, 115, 22, 0.08);
-}
-
-.chitti-glass__inner {
-  animation: glass-content 0.4s ease-out;
-}
-
-@keyframes glass-content {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
+  .lg-home__features {
+    margin: 0 auto;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
-.chitti-glass__title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  text-align: center;
-  margin-bottom: 0.35rem;
-}
-
-.chitti-glass__sub {
-  text-align: center;
-  font-size: 0.9rem;
-  color: var(--text-soft);
-  margin-bottom: 1.75rem;
-}
-
-.chitti-glass__foot {
-  text-align: center;
-  font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.45);
-  margin-top: 1.5rem;
-}
-
-/* Portal picker */
-.chitti-portals {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.85rem;
-}
-
-.chitti-portal {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 1.25rem 0.75rem;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--glass-border);
-  border-radius: 18px;
-  cursor: pointer;
-  font-family: inherit;
-  color: var(--text);
-  transition:
-    transform 0.25s,
-    border-color 0.25s,
-    background 0.25s,
-    box-shadow 0.25s;
-}
-
-.chitti-portal:hover {
-  transform: translateY(-3px);
-  border-color: rgba(249, 115, 22, 0.5);
-  background: rgba(249, 115, 22, 0.1);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
-}
-
-.chitti-portal__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  color: var(--accent);
-}
-
-.chitti-portal__icon svg {
-  width: 22px;
-  height: 22px;
-}
-
-.chitti-portal__label {
-  font-weight: 700;
-  font-size: 0.95rem;
-}
-
-.chitti-portal__hint {
-  font-size: 0.68rem;
-  color: var(--text-soft);
-  text-align: center;
-  line-height: 1.3;
-}
-
-/* Form */
-.chitti-form__back {
-  background: none;
-  border: none;
-  color: var(--text-soft);
-  font-size: 0.82rem;
-  font-family: inherit;
-  cursor: pointer;
-  padding: 0;
-  margin-bottom: 1rem;
-  transition: color 0.2s;
-}
-
-.chitti-form__back:hover {
-  color: var(--accent);
-}
-
-.chitti-form__error {
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-  font-size: 0.85rem;
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.35);
-  border-radius: 12px;
-  color: #fecaca;
-}
-
-.chitti-field {
-  display: block;
-  margin-bottom: 1.15rem;
-}
-
-.chitti-field > span {
-  display: block;
-  font-size: 0.8rem;
-  font-weight: 600;
-  margin-bottom: 0.45rem;
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.chitti-field input {
-  width: 100%;
-  padding: 0.9rem 1rem;
-  font-size: 0.95rem;
-  font-family: inherit;
-  color: var(--text);
-  background: var(--input-bg);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.chitti-field input::placeholder {
-  color: rgba(255, 255, 255, 0.35);
-}
-
-.chitti-field input:focus {
-  outline: none;
-  border-color: rgba(249, 115, 22, 0.6);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
-}
-
-.chitti-field__pass {
-  position: relative;
-}
-
-.chitti-field__pass input {
-  padding-right: 3.5rem;
-}
-
-.chitti-field__toggle {
-  position: absolute;
-  right: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: var(--accent);
-  font-size: 0.75rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-}
-
-.chitti-form__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.35rem;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.chitti-check {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.82rem;
-  color: var(--text-soft);
-  cursor: pointer;
-}
-
-.chitti-check input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent);
-}
-
-.chitti-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 1rem 1.5rem;
-  font-size: 1rem;
-  font-weight: 700;
-  font-family: inherit;
-  color: #fff;
-  background: linear-gradient(135deg, #fb923c 0%, var(--accent) 50%, #ea580c 100%);
-  border: none;
-  border-radius: 14px;
-  cursor: pointer;
-  box-shadow: 0 8px 32px var(--accent-glow);
-  transition: transform 0.25s, box-shadow 0.25s, opacity 0.2s;
-}
-
-.chitti-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 14px 40px var(--accent-glow);
-}
-
-.chitti-btn:disabled {
-  opacity: 0.8;
-  cursor: wait;
-}
-
-.chitti-btn__arrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  font-size: 1.1rem;
-  font-weight: 400;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
-}
-
-.chitti-demo {
-  text-align: center;
-  margin-top: 1.25rem;
-  font-size: 0.78rem;
-  color: var(--text-soft);
-}
-
-.chitti-demo strong {
-  color: rgba(255, 255, 255, 0.9);
-  font-weight: 600;
-}
-
-@media (max-width: 959px) {
-  .chitti-login__nav {
+  .lg-home__nav {
     padding: 1rem 1.25rem;
   }
+
+  .lg-home__links {
+    display: none;
+  }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .chitti-bokeh,
-  .chitti-panel-wrap,
-  .chitti-glass__inner {
-    animation: none;
+@media (max-width: 500px) {
+  .lg-home__features {
+    grid-template-columns: 1fr;
   }
 
-  .chitti-portal:hover,
-  .chitti-btn:hover:not(:disabled) {
-    transform: none;
+  .lg-home__brand strong {
+    font-size: 0.8rem;
   }
 }

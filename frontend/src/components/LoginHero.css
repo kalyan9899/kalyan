@@ -55,19 +55,32 @@
   }
 }
 
-.lg-hero__brand-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: -0.05em;
-  color: #fff;
-  background: linear-gradient(135deg, #f97316, #ea580c);
+.lg-hero__brand-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
   border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(249, 115, 22, 0.4);
+  background: rgba(255, 255, 255, 0.95);
+  padding: 2px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.lg-hero__brand-showcase {
+  display: none;
+  margin-bottom: 1.75rem;
+}
+
+.lg-hero__brand-showcase img {
+  width: min(200px, 45vw);
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 32px rgba(0, 0, 0, 0.35));
+}
+
+@media (min-width: 960px) {
+  .lg-hero__brand-showcase {
+    display: block;
+  }
 }
 
 .lg-hero__title {
@@ -359,6 +372,12 @@
   color: #fff;
   background: linear-gradient(135deg, #f97316, #c2410c);
   border-radius: 10px;
+}
+
+.lg-dash__avatar--logo {
+  object-fit: contain;
+  background: #fff;
+  padding: 2px;
 }
 
 .lg-dash__metrics {
