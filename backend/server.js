@@ -14,7 +14,9 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
-
+app.get('/', (req, res) => {
+  res.send('Backend API is running');
+});
 app.use('/api/auth', authRoutes);
 app.use('/api/customer', customerRoutes);
 app.use('/api/manager', managerRoutes);
