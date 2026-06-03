@@ -107,6 +107,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeNav, setActiveNav] = useState('home');
+  const [transitioning, setTransitioning] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('lg_remember');
@@ -155,7 +156,13 @@ export default function Login() {
       } else {
         localStorage.removeItem('lg_remember');
       }
-      navigate(data.role === 'manager' ? '/manager' : '/customer');
+      if (data.role === 'manager') {
+        sessionStorage.setItem('lg_login_anim', '1');
+        setTransitioning(true);
+        setTimeout(() => navigate('/manager'), 1600);
+      } else {
+        navigate('/customer');
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -166,7 +173,27 @@ export default function Login() {
   const isManager = role === 'manager';
 
   return (
-    <div className={`lg-home lg-home--${role}`} id="home">
+    <div className={`lg-home lg-home--${role}${transitioning ? ' lg-home--exiting' : ''}`} id="home">
+
+      {/* ── Cinematic login→dashboard transition overlay ── */}
+      {transitioning && (
+        <div className="lg-transition-overlay" aria-hidden="true">
+          <div className="lg-transition-overlay__ripple" />
+          <div className="lg-transition-overlay__ripple lg-transition-overlay__ripple--2" />
+          <div className="lg-transition-overlay__ripple lg-transition-overlay__ripple--3" />
+          <div className="lg-transition-overlay__curtain lg-transition-overlay__curtain--left" />
+          <div className="lg-transition-overlay__curtain lg-transition-overlay__curtain--right" />
+          <div className="lg-transition-overlay__logo-burst">
+            <img src={LOGO_SRC} alt="" />
+          </div>
+          <div className="lg-transition-overlay__flash" />
+          <div className="lg-transition-overlay__particles">
+            {Array.from({ length: 18 }).map((_, i) => (
+              <span key={i} className="lg-particle" style={{ '--i': i }} />
+            ))}
+          </div>
+        </div>
+      )}
       <div className="lg-home__bg" aria-hidden="true">
         <div className="lg-home__watermark" style={{ backgroundImage: `url(${LOGO_SRC})` }} />
         <div className="lg-home__glow lg-home__glow--1" />
@@ -177,7 +204,7 @@ export default function Login() {
 
       <header className="lg-home__nav">
         <a href="#home" className="lg-home__brand" onClick={(e) => e.preventDefault()}>
-          <img src={LOGO_SRC} alt="" className="lg-home__brand-logo" />
+          <img src={LOGO_SRC} alt="" className="lg-home__brand-logo" loading="lazy" decoding="async" />
           <div>
             <strong>{BRAND_NAME.toUpperCase()} FINANCE</strong>
             <span>Trust · Transparency · Growth</span>
@@ -241,7 +268,7 @@ export default function Login() {
           <div className={`lg-login-card lg-login-card--${role}`}>
             <div className="lg-login-card__head">
               <span className="lg-login-card__logo-ring">
-                <img src={LOGO_SRC} alt="" className="lg-login-card__logo" />
+                <img src={LOGO_SRC} alt="" className="lg-login-card__logo" loading="lazy" decoding="async" />
               </span>
               <div>
                 <h2>{isManager ? 'Manager Login' : 'Customer Login'}</h2>

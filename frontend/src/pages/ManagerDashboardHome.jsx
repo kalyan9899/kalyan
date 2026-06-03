@@ -253,7 +253,7 @@ function ManagerDashboardHome({
           { label: 'Pending Payments', value: kpis.pendingPayments, delta: `${kpis.pendingPayments} this week`, tone: 'orange', icon: '⏳' },
           { label: 'Completed Payments', value: kpis.completedPayments, delta: `${kpis.completedPayments} this week`, tone: 'teal', icon: '✓' },
           { label: 'Total Collected', value: formatMoney(kpis.totalCollected), delta: 'This month', tone: 'blue', icon: '₹' },
-          { label: 'Total Due', value: formatMoney(kpis.totalDue), delta: 'Outstanding', tone: 'red', icon: '!' },
+          { label: 'Pending Amount', value: formatMoney(kpis.totalDue), delta: 'Outstanding', tone: 'red', icon: '!' },
           { label: 'Defaulters', value: kpis.defaulters, delta: 'Unpaid', tone: 'purple', icon: '⚠' },
         ].map((k) => (
           <article key={k.label} className={`mg-kpi-card mg-kpi-card--${k.tone}`}>
@@ -301,7 +301,7 @@ function ManagerDashboardHome({
               recentClients.map((c) => (
                 <li key={c.id}>
                   {c.profilePhoto ? (
-                    <img src={c.profilePhoto} alt="" className="mg-avatar mg-avatar--img" />
+                    <img src={c.profilePhoto} alt="" className="mg-avatar mg-avatar--img" loading="lazy" decoding="async" />
                   ) : (
                     <span className="mg-avatar">{getInitials(c.name)}</span>
                   )}
@@ -382,7 +382,7 @@ function ManagerDashboardHome({
                   <div className="mg-reminder-meta">
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                       <strong>{r.name}</strong>
-                      <span className="mg-muted">Due {formatDate(r.dueDate)}</span>
+                      <span className="mg-muted">Week {r.weekNumber || ''} pending</span>
                     </div>
                     <div style={{ marginLeft: '0.75rem' }}>
                       <span className="mg-reminder-badge">{formatMoney(r.amount)}</span>
@@ -415,13 +415,13 @@ function ManagerDashboardHome({
         </section>
 
         <section className="mg-card">
-          <h2>Upcoming Dues</h2>
+          <h2>Pending Weeks</h2>
           <ul className="mg-reminder-list">
             {data.paymentReminders?.slice(0, 5).map((r) => (
-              <li key={r.paymentId} className={`anim-fade-up ${r.isOverdue ? 'overdue' : r.daysUntilDue <= 2 ? 'urgent' : ''}`}>
+              <li key={r.paymentId} className="anim-fade-up">
                 <div>
                   <strong>{r.name}</strong>
-                  <div className="mg-muted">{r.daysUntilDue < 0 ? 'Overdue' : `${r.daysUntilDue} days`}</div>
+                  <div className="mg-muted">Week {r.weekNumber || ''} pending</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <strong>{formatMoney(r.amount)}</strong>

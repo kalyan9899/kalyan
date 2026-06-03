@@ -15,7 +15,7 @@ export default function CustomerAvatar({ name, photo, size = 'md', className = '
         className={`customer-avatar ${sizeClass} ${className}`.trim()}
         aria-label={`${name} profile photo`}
       >
-        <img src={photo} alt="" />
+        <img src={photo} alt="" loading="lazy" decoding="async" />
       </div>
     );
   }

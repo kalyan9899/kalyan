@@ -25,5 +25,10 @@ const weeklyPaymentSchema = new mongoose.Schema(
 );
 
 weeklyPaymentSchema.index({ client: 1, weekStart: 1 }, { unique: true });
+weeklyPaymentSchema.index({ weekStart: 1, paid: 1 });
+weeklyPaymentSchema.index({ paid: 1, paidAt: -1 });
+weeklyPaymentSchema.index({ paymentStatus: 1, screenshotUploadedAt: -1 });
+weeklyPaymentSchema.index({ client: 1, paid: 1, weekStart: -1 });
+weeklyPaymentSchema.index({ updatedAt: -1 });
 
 module.exports = mongoose.model('WeeklyPayment', weeklyPaymentSchema);

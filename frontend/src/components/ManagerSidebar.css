@@ -228,3 +228,75 @@
     transform: none;
   }
 }
+
+@media (max-width: 1024px) {
+  .manager-sidebar-toggle {
+    display: flex;
+  }
+
+  .manager-sidebar-backdrop {
+    display: block;
+  }
+
+  .manager-sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .manager-sidebar--open {
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .manager-sidebar-toggle {
+    top: 0.75rem;
+    left: 0.85rem;
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+  }
+
+  .manager-sidebar {
+    width: min(86vw, 310px);
+    padding: 1rem 0.85rem;
+  }
+
+  .manager-sidebar__brand {
+    gap: 0.65rem;
+    padding-bottom: 0.9rem;
+  }
+
+  .manager-sidebar__logo {
+    width: 44px;
+    height: 44px;
+  }
+
+  .manager-sidebar__brand strong {
+    font-size: clamp(0.78rem, 3.3vw, 0.95rem);
+  }
+
+  .manager-sidebar__brand span,
+  .manager-sidebar__brand em {
+    font-size: clamp(0.58rem, 2.7vw, 0.72rem);
+  }
+
+  .manager-sidebar__nav {
+    gap: 0.45rem;
+  }
+
+  .manager-sidebar__btn {
+    min-height: 48px;
+    padding: 0.65rem 0.7rem;
+    font-size: clamp(0.88rem, 3.8vw, 0.98rem);
+  }
+
+  .manager-sidebar__icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .manager-sidebar__deco-logo {
+    width: 54px;
+  }
+}

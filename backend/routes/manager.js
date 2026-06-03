@@ -4,13 +4,34 @@ const Client = require('../models/Client');
 const WeeklyPayment = require('../models/WeeklyPayment');
 const CollectionEntry = require('../models/CollectionEntry');
 const { auth } = require('../middleware/auth');
-const { getWeekStart, getDueDate, getDaysUntil, getPaymentSchedule } = require('../utils/week');
+const {
+  buildPaymentWeeks,
+  getWeekStart,
+  getDueDate,
+  getDaysUntil,
+  getFirstPaymentWeekStart,
+  getPaymentSchedule,
+  TOTAL_PAYMENT_WEEKS,
+  normalizeTotalWeeks,
+  getInterestRateForWeeks,
+} = require('../utils/week');
 const { buildReminderMessage } = require('../utils/reminder');
-const { calcInterestAmount, calcTotalAmount } = require('../utils/finance');
+const {
+  calcInterestAmount,
+  calcTotalAmount,
+  getClientInterestAmount,
+  getClientTotalPayable,
+} = require('../utils/finance');
 
 const router = express.Router();
 
 router.use(auth('manager'));
+
+function calcPlanWeeklyPayment(amountTaken, interestRate, totalWeeks) {
+  const total = calcTotalAmount(amountTaken, interestRate);
+  const weekly = total / normalizeTotalWeeks(totalWeeks);
+  return Number.isInteger(weekly) ? weekly : Number(weekly.toFixed(2));
+}
 
 router.get('/clients', async (req, res) => {
   try {
@@ -19,6 +40,7 @@ router.get('/clients', async (req, res) => {
     if (q) {
       query = {
         $or: [
+          { uniqueNo: { $regex: q, $options: 'i' } },
           { name: { $regex: q, $options: 'i' } },
           { place: { $regex: q, $options: 'i' } },
           { phone: { $regex: q, $options: 'i' } },
@@ -26,13 +48,158 @@ router.get('/clients', async (req, res) => {
         ],
       };
     }
-    const clients = await Client.find(query).select('-password').sort({ createdAt: -1 });
+    const clients = await Client.find(query).select('-password').sort({ createdAt: -1 }).lean();
+    const paidPayments = clients.length
+      ? await WeeklyPayment.find({
+          client: { $in: clients.map((client) => client._id) },
+          paid: true,
+        })
+          .select('client weekStart paid amount')
+          .lean()
+      : [];
     const enriched = clients.map((c) => ({
-      ...c.toObject(),
-      interestAmount: calcInterestAmount(c.amountTaken, c.interestRate),
-      totalAmount: calcTotalAmount(c.amountTaken, c.interestRate),
+      ...c,
+      ...buildClientPlanSummary(c, paidPayments),
     }));
     res.json(enriched);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get('/clients/:id/payment-plan', async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.id).select('-password');
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    const currentWeekStart = getWeekStart();
+    const clientTotalWeeks = normalizeTotalWeeks(client.totalWeeks);
+    const schedule = await ensureClientScheduledPayments(client, currentWeekStart);
+    const payments = consolidatePayments(
+      await WeeklyPayment.find({ client: client._id })
+        .select('client weekStart paid paidAt amount paymentStatus screenshotUploadedAt reminderSent reminderMessage updatedAt createdAt')
+        .lean()
+    );
+    const byWeek = new Map(payments.map((payment) => [paymentWeekKey(payment.weekStart), payment]));
+    const currentWeekKey = paymentWeekKey(currentWeekStart);
+
+    const weeks = buildPaymentWeeks(client.dateTaken, clientTotalWeeks).map((planned) => {
+      const key = paymentWeekKey(planned.weekStart);
+      const payment = byWeek.get(key);
+      const dueDate = getDueDate(planned.weekStart);
+      const isFuture = planned.weekStart > currentWeekStart;
+      const paid = Boolean(payment?.paid);
+      const baseStatus = payment?.paymentStatus || 'pending';
+      const paymentStatus = paid ? 'paid' : isFuture ? 'upcoming' : baseStatus;
+
+      return {
+        paymentId: payment?._id || null,
+        weekNumber: planned.weekNumber,
+        weekStart: planned.weekStart,
+        dueDate,
+        amount: Number(payment?.amount || client.weeklyPayment || 0),
+        paid,
+        paidAt: payment?.paidAt || null,
+        paymentStatus,
+        screenshotUploadedAt: payment?.screenshotUploadedAt || null,
+        reminderSent: Boolean(payment?.reminderSent),
+        isCurrentWeek: key === currentWeekKey,
+        isFuture,
+        isOverdue: !paid && !isFuture && getDaysUntil(dueDate) < 0,
+      };
+    });
+
+    const paidWeeks = weeks.filter((week) => week.paid);
+    const notPaidWeeks = weeks.filter((week) => !week.paid);
+
+    res.json({
+      client: {
+        _id: client._id,
+        name: client.name,
+        place: client.place,
+        phone: client.phone,
+        amountTaken: client.amountTaken,
+        weeklyPayment: client.weeklyPayment,
+        dateTaken: client.dateTaken,
+        totalWeeks: clientTotalWeeks,
+      },
+      schedule,
+      summary: {
+        totalWeeks: clientTotalWeeks,
+        paidWeeks: paidWeeks.length,
+        notPaidWeeks: notPaidWeeks.length,
+        totalPaid: paidWeeks.reduce((sum, week) => sum + Number(week.amount || 0), 0),
+        totalNotPaid: notPaidWeeks.reduce((sum, week) => sum + Number(week.amount || 0), 0),
+      },
+      weeks,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.patch('/clients/:id/payment-plan/:weekNumber', async (req, res) => {
+  try {
+    const { paid } = req.body;
+    const weekNumber = Number(req.params.weekNumber);
+    const client = await Client.findById(req.params.id);
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+    const clientTotalWeeks = normalizeTotalWeeks(client.totalWeeks);
+    if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > clientTotalWeeks) {
+      return res.status(400).json({ message: `Week number must be between 1 and ${clientTotalWeeks}` });
+    }
+
+    const planned = buildPaymentWeeks(client.dateTaken, clientTotalWeeks).find((week) => week.weekNumber === weekNumber);
+    if (!planned) {
+      return res.status(404).json({ message: 'Payment week not found' });
+    }
+
+    const weekStart = getWeekStart(planned.weekStart);
+    const weekEnd = nextWeekStart(weekStart);
+    let payment = consolidatePayments(
+      await WeeklyPayment.find({
+        client: client._id,
+        weekStart: { $gte: weekStart, $lt: weekEnd },
+      })
+    )[0];
+
+    if (!payment) {
+      payment = await WeeklyPayment.create({
+        client: client._id,
+        weekStart,
+        amount: client.weeklyPayment,
+        paid: false,
+        paymentStatus: 'pending',
+      });
+    }
+
+    payment.paid = Boolean(paid);
+    payment.paidAt = paid ? new Date() : undefined;
+    payment.paymentStatus = paid ? 'approved' : 'pending';
+    payment.approvedAt = paid ? new Date() : undefined;
+    if (!paid) {
+      payment.reminderSent = false;
+      payment.reminderSentAt = undefined;
+      payment.rejectedAt = undefined;
+      payment.managerNote = '';
+    }
+    await payment.save();
+
+    res.json({
+      _id: payment._id,
+      paymentId: payment._id,
+      weekNumber,
+      weekStart: payment.weekStart,
+      amount: payment.amount,
+      paid: payment.paid,
+      paidAt: payment.paidAt,
+      paymentStatus: payment.paymentStatus,
+      approvedAt: payment.approvedAt,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -42,18 +209,29 @@ router.post('/clients', async (req, res) => {
   try {
     const {
       name,
+      uniqueNo,
       place,
       phone,
       amountTaken,
       dateTaken,
+      totalWeeks,
       interestRate,
       weeklyPayment,
       username,
       password,
     } = req.body;
 
-    if (!name || !place || !phone || !amountTaken || !dateTaken || !interestRate || !weeklyPayment || !username || !password) {
+    const planWeeks = normalizeTotalWeeks(totalWeeks);
+    const planInterestRate = getInterestRateForWeeks(planWeeks);
+    const planWeeklyPayment = calcPlanWeeklyPayment(Number(amountTaken), planInterestRate, planWeeks);
+
+    if (!uniqueNo || !name || !place || !phone || !amountTaken || !dateTaken || !totalWeeks || !username || !password) {
       return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    const existingUniqueNo = await Client.findOne({ uniqueNo: uniqueNo.trim() });
+    if (existingUniqueNo) {
+      return res.status(400).json({ message: 'Unique No already exists' });
     }
 
     const existing = await Client.findOne({ username: username.trim().toLowerCase() });
@@ -63,19 +241,23 @@ router.post('/clients', async (req, res) => {
 
     const hashed = await bcrypt.hash(password, 10);
     const client = await Client.create({
+      uniqueNo: uniqueNo.trim(),
       name,
       place,
       phone,
       amountTaken: Number(amountTaken),
       dateTaken: new Date(dateTaken),
-      interestRate: Number(interestRate),
-      weeklyPayment: Number(weeklyPayment),
+      totalWeeks: planWeeks,
+      interestRate: planInterestRate,
+      planInterestAmount: calcInterestAmount(Number(amountTaken), planInterestRate),
+      totalPayable: calcTotalAmount(Number(amountTaken), planInterestRate),
+      weeklyPayment: planWeeklyPayment,
       username: username.trim().toLowerCase(),
       password: hashed,
     });
 
     const weekStart = getWeekStart();
-    const schedule = getPaymentSchedule(client.dateTaken, weekStart);
+    const schedule = getPaymentSchedule(client.dateTaken, weekStart, client.totalWeeks);
     if (schedule.isActiveWeek) {
       await WeeklyPayment.create({
         client: client._id,
@@ -102,10 +284,12 @@ router.patch('/clients/:id', async (req, res) => {
 
     const {
       name,
+      uniqueNo,
       place,
       phone,
       amountTaken,
       dateTaken,
+      totalWeeks,
       interestRate,
       weeklyPayment,
       username,
@@ -113,15 +297,31 @@ router.patch('/clients/:id', async (req, res) => {
     } = req.body;
 
     if (name !== undefined) client.name = name;
+    if (uniqueNo !== undefined) {
+      const nextUniqueNo = uniqueNo.trim();
+      if (!nextUniqueNo) {
+        return res.status(400).json({ message: 'Unique No is required' });
+      }
+      const existingUniqueNo = await Client.findOne({ uniqueNo: nextUniqueNo, _id: { $ne: client._id } });
+      if (existingUniqueNo) {
+        return res.status(400).json({ message: 'Unique No already exists' });
+      }
+      client.uniqueNo = nextUniqueNo;
+    }
     if (place !== undefined) client.place = place;
     if (phone !== undefined) client.phone = phone;
     if (amountTaken !== undefined) client.amountTaken = Number(amountTaken);
     if (dateTaken !== undefined) client.dateTaken = new Date(dateTaken);
-    if (interestRate !== undefined) client.interestRate = Number(interestRate);
-    if (weeklyPayment !== undefined) client.weeklyPayment = Number(weeklyPayment);
+    if (totalWeeks !== undefined) client.totalWeeks = normalizeTotalWeeks(totalWeeks);
     if (username !== undefined) client.username = username.trim().toLowerCase();
     if (password) {
       client.password = await bcrypt.hash(password, 10);
+    }
+    if (amountTaken !== undefined || totalWeeks !== undefined) {
+      client.interestRate = getInterestRateForWeeks(client.totalWeeks);
+      client.planInterestAmount = calcInterestAmount(client.amountTaken, client.interestRate);
+      client.totalPayable = calcTotalAmount(client.amountTaken, client.interestRate);
+      client.weeklyPayment = calcPlanWeeklyPayment(client.amountTaken, client.interestRate, client.totalWeeks);
     }
 
     await client.save();
@@ -200,9 +400,139 @@ function consolidatePayments(payments) {
   return [...byClientWeek.values()].sort((a, b) => new Date(a.weekStart) - new Date(b.weekStart));
 }
 
+function paymentWeekKey(weekStart) {
+  return getWeekStart(weekStart).toISOString().slice(0, 10);
+}
+
+function currentPlanStart(client) {
+  return getFirstPaymentWeekStart(client.dateTaken);
+}
+
+function sumPaidForCurrentPlan(client, payments = []) {
+  const planStart = currentPlanStart(client);
+  return payments
+    .filter((payment) => {
+      const paymentClientId = String(payment.client?._id || payment.client);
+      return (
+        paymentClientId === String(client._id) &&
+        payment.paid &&
+        new Date(payment.weekStart) >= planStart
+      );
+    })
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+}
+
+function buildClientPlanSummary(client, payments = []) {
+  const oldTotalPayable = getClientTotalPayable(client);
+  const amountAlreadyPaid = sumPaidForCurrentPlan(client, payments);
+  const previousRemainingAmount = Math.max(oldTotalPayable - amountAlreadyPaid, 0);
+  return {
+    interestAmount: getClientInterestAmount(client),
+    totalAmount: oldTotalPayable,
+    totalPayable: oldTotalPayable,
+    amountAlreadyPaid,
+    previousRemainingAmount,
+  };
+}
+
+function isDuplicateBulkError(err) {
+  return err.code === 11000 || err.writeErrors?.every((writeErr) => writeErr.code === 11000);
+}
+
+async function ensureClientScheduledPayments(client, weekStart = getWeekStart()) {
+  const totalWeeks = normalizeTotalWeeks(client.totalWeeks);
+  const schedule = getPaymentSchedule(client.dateTaken, weekStart, totalWeeks);
+  const activeWeekCount = Math.min(Math.max(schedule.currentWeekNumber, 0), schedule.totalWeeks);
+  if (activeWeekCount < 1) return schedule;
+
+  const existing = await WeeklyPayment.find({ client: client._id }).sort({
+    paid: -1,
+    updatedAt: -1,
+    createdAt: -1,
+  });
+  const byWeek = new Map(consolidatePayments(existing).map((p) => [paymentWeekKey(p.weekStart), p]));
+
+  for (const planned of buildPaymentWeeks(client.dateTaken, totalWeeks).slice(0, activeWeekCount)) {
+    const key = paymentWeekKey(planned.weekStart);
+    if (byWeek.has(key)) continue;
+    await WeeklyPayment.create({
+      client: client._id,
+      weekStart: planned.weekStart,
+      amount: client.weeklyPayment,
+      paid: false,
+    });
+  }
+
+  return schedule;
+}
+
+async function ensureScheduledPaymentsForClients(clients, weekStart = getWeekStart()) {
+  const scheduleByClient = new Map();
+  const operations = [];
+
+  const activeClients = clients
+    .map((client) => {
+      const totalWeeks = normalizeTotalWeeks(client.totalWeeks);
+      const schedule = getPaymentSchedule(client.dateTaken, weekStart, totalWeeks);
+      scheduleByClient.set(String(client._id), schedule);
+      const activeWeekCount = Math.min(Math.max(schedule.currentWeekNumber, 0), schedule.totalWeeks);
+      return { client, schedule, activeWeekCount };
+    })
+    .filter(({ activeWeekCount }) => activeWeekCount > 0);
+
+  if (!activeClients.length) return scheduleByClient;
+
+  const clientIds = activeClients.map(({ client }) => client._id);
+  const existingPayments = await WeeklyPayment.find({ client: { $in: clientIds } })
+    .select('client weekStart paid paymentStatus updatedAt createdAt')
+    .lean();
+  const existingKeys = new Set(
+    consolidatePayments(existingPayments).map((payment) => {
+      const clientId = String(payment.client?._id || payment.client);
+      return `${clientId}:${paymentWeekKey(payment.weekStart)}`;
+    })
+  );
+
+  activeClients.forEach(({ client, activeWeekCount }) => {
+    const totalWeeks = normalizeTotalWeeks(client.totalWeeks);
+    buildPaymentWeeks(client.dateTaken, totalWeeks)
+      .slice(0, activeWeekCount)
+      .forEach((planned) => {
+        const normalizedWeekStart = getWeekStart(planned.weekStart);
+        const key = `${client._id}:${paymentWeekKey(normalizedWeekStart)}`;
+        if (existingKeys.has(key)) return;
+        operations.push({
+          updateOne: {
+            filter: { client: client._id, weekStart: normalizedWeekStart },
+            update: {
+              $setOnInsert: {
+                client: client._id,
+                weekStart: normalizedWeekStart,
+                amount: client.weeklyPayment,
+                paid: false,
+                paymentStatus: 'pending',
+              },
+            },
+            upsert: true,
+          },
+        });
+      });
+  });
+
+  if (!operations.length) return scheduleByClient;
+
+  try {
+    await WeeklyPayment.bulkWrite(operations, { ordered: false });
+  } catch (err) {
+    if (!isDuplicateBulkError(err)) throw err;
+  }
+
+  return scheduleByClient;
+}
+
 function isScheduledPayment(payment) {
   if (!payment.client?.dateTaken) return true;
-  return getPaymentSchedule(payment.client.dateTaken, payment.weekStart).isActiveWeek;
+  return getPaymentSchedule(payment.client.dateTaken, payment.weekStart, payment.client.totalWeeks).isActiveWeek;
 }
 
 router.get('/dashboard', async (req, res) => {
@@ -211,9 +541,53 @@ router.get('/dashboard', async (req, res) => {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     const weekStart = getWeekStart();
+    const oldestBarWeekStart = new Date(weekStart);
+    oldestBarWeekStart.setDate(oldestBarWeekStart.getDate() - 28);
+    const todayStart = startOfDay(now);
+    const todayEnd = endOfDay(now);
 
-    const totalClients = await Client.countDocuments();
-    const allPaymentRecords = await WeeklyPayment.find().populate('client');
+    const allClients = await Client.find().select('-password').sort({ createdAt: -1 }).lean();
+    await ensureScheduledPaymentsForClients(allClients, weekStart);
+    const totalClients = allClients.length;
+
+    const [
+      allPaymentRecords,
+      monthEntries,
+      barEntries,
+      recentFromEntries,
+      recentFromWeekly,
+      clientsAddedThisMonth,
+    ] = await Promise.all([
+      WeeklyPayment.find()
+        .select('client weekStart paid paidAt amount paymentStatus reminderSent reminderMessage updatedAt createdAt')
+        .populate('client', 'name phone weeklyPayment dateTaken totalWeeks profilePhoto')
+        .lean(),
+      CollectionEntry.find({
+        entryDate: { $gte: monthStart, $lte: monthEnd },
+      })
+        .select('name collection charges payments entryDate createdAt')
+        .lean(),
+      CollectionEntry.find({
+        entryDate: { $gte: oldestBarWeekStart, $lte: todayEnd },
+      })
+        .select('collection entryDate')
+        .lean(),
+      CollectionEntry.find()
+        .sort({ entryDate: -1, createdAt: -1 })
+        .limit(8)
+        .select('name collection entryDate')
+        .lean(),
+      WeeklyPayment.find({ paid: true })
+        .select('client amount paidAt')
+        .populate('client', 'name profilePhoto')
+        .sort({ paidAt: -1 })
+        .limit(8)
+        .lean(),
+      Client.countDocuments({
+        createdAt: { $gte: monthStart, $lte: monthEnd },
+      }),
+    ]);
+
     const scheduledPayments = consolidatePayments(allPaymentRecords).filter(isScheduledPayment);
     const currentWeekPayments = scheduledPayments.filter((p) => {
       const ws = getWeekStart(p.weekStart);
@@ -223,9 +597,6 @@ router.get('/dashboard', async (req, res) => {
     const monthPaid = scheduledPayments.filter(
       (p) => p.paid && p.paidAt && p.paidAt >= monthStart && p.paidAt <= monthEnd
     );
-    const monthEntries = await CollectionEntry.find({
-      entryDate: { $gte: monthStart, $lte: monthEnd },
-    });
 
     const pendingPayments = currentWeekPayments.filter((p) => !p.paid).length;
     const completedPayments = currentWeekPayments.filter((p) => p.paid).length;
@@ -279,11 +650,12 @@ router.get('/dashboard', async (req, res) => {
       we.setDate(we.getDate() + 6);
       we.setHours(23, 59, 59, 999);
 
-      const weekPaid = await WeeklyPayment.find({
-        paid: true,
-        paidAt: { $gte: ws, $lte: we },
+      const weekPaid = scheduledPayments.filter((p) => {
+        if (!p.paid || !p.paidAt) return false;
+        const paidAt = new Date(p.paidAt);
+        return paidAt >= ws && paidAt <= we;
       });
-      const weekEntries = monthEntries.filter((e) => {
+      const weekEntries = barEntries.filter((e) => {
         const ed = new Date(e.entryDate);
         return ed >= ws && ed <= we;
       });
@@ -297,16 +669,6 @@ router.get('/dashboard', async (req, res) => {
         amount,
       });
     }
-
-    const recentFromEntries = await CollectionEntry.find()
-      .sort({ entryDate: -1, createdAt: -1 })
-      .limit(8)
-      .lean();
-    const recentFromWeekly = await WeeklyPayment.find({ paid: true })
-      .populate('client', 'name profilePhoto')
-      .sort({ paidAt: -1 })
-      .limit(8)
-      .lean();
 
     const recentCollections = [
       ...recentFromEntries.map((e) => ({
@@ -335,11 +697,14 @@ router.get('/dashboard', async (req, res) => {
         const client = p.client;
         if (!client) return null;
         const dueDate = getDueDate(p.weekStart);
+        const schedule = getPaymentSchedule(client.dateTaken, p.weekStart, client.totalWeeks);
         return {
           paymentId: p._id,
           name: client.name,
           phone: client.phone,
           amount: Number(p.amount || client.weeklyPayment || 0),
+          weekNumber: schedule.currentWeekNumber,
+          weekStart: p.weekStart,
           dueDate,
           daysUntilDue: getDaysUntil(dueDate),
           isOverdue: getDaysUntil(dueDate) < 0,
@@ -347,7 +712,7 @@ router.get('/dashboard', async (req, res) => {
         };
       })
       .filter(Boolean)
-      .sort((a, b) => a.daysUntilDue - b.daysUntilDue)
+      .sort((a, b) => new Date(a.weekStart) - new Date(b.weekStart))
       .slice(0, 5);
 
     const performerMap = new Map();
@@ -365,19 +730,14 @@ router.get('/dashboard', async (req, res) => {
       .map(([name, amount]) => ({ name, amount }))
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 3);
-
-    const clientsAddedThisMonth = await Client.countDocuments({
-      createdAt: { $gte: monthStart, $lte: monthEnd },
+    const todayEntries = monthEntries.filter((e) => {
+      const entryDate = new Date(e.entryDate);
+      return entryDate >= todayStart && entryDate <= todayEnd;
     });
-
-    const todayStart = startOfDay(now);
-    const todayEnd = endOfDay(now);
-    const todayEntries = await CollectionEntry.find({
-      entryDate: { $gte: todayStart, $lte: todayEnd },
-    });
-    const todayWeeklyPaid = await WeeklyPayment.find({
-      paid: true,
-      paidAt: { $gte: todayStart, $lte: todayEnd },
+    const todayWeeklyPaid = scheduledPayments.filter((p) => {
+      if (!p.paid || !p.paidAt) return false;
+      const paidAt = new Date(p.paidAt);
+      return paidAt >= todayStart && paidAt <= todayEnd;
     });
 
     const dailyCash =
@@ -387,7 +747,6 @@ router.get('/dashboard', async (req, res) => {
     const dailyOther = todayEntries.reduce((s, e) => s + Number(e.charges || 0), 0);
     const dailyTotal = dailyCash + dailyUpi + dailyOther;
 
-    const allClients = await Client.find().select('-password').sort({ createdAt: -1 });
     const paidClientIds = new Set(
       currentWeekPayments
         .filter((p) => p.paid)
@@ -456,11 +815,22 @@ router.get('/weekly-status', async (req, res) => {
     const weekStart = getWeekStart();
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
-    const clients = await Client.find().select('-password');
+    const clients = await Client.find().select('-password').lean();
+    const scheduleByClient = await ensureScheduledPaymentsForClients(clients, weekStart);
+    const currentPayments = consolidatePayments(
+      await WeeklyPayment.find({
+        client: { $in: clients.map((client) => client._id) },
+        weekStart: { $gte: weekStart, $lt: weekEnd },
+      })
+        .select('client weekStart paid paidAt amount paymentStatus screenshotUploadedAt reminderSent reminderMessage updatedAt createdAt')
+        .lean()
+    );
+    const paymentByClient = new Map(
+      currentPayments.map((payment) => [String(payment.client?._id || payment.client), payment])
+    );
 
-    const status = await Promise.all(
-      clients.map(async (client) => {
-        const schedule = getPaymentSchedule(client.dateTaken, weekStart);
+    const status = clients.map((client) => {
+        const schedule = scheduleByClient.get(String(client._id)) || getPaymentSchedule(client.dateTaken, weekStart, client.totalWeeks);
         if (!schedule.isActiveWeek) {
           const nextDueWeek = schedule.isBeforeStart ? schedule.firstPaymentWeekStart : null;
           return {
@@ -468,6 +838,7 @@ router.get('/weekly-status', async (req, res) => {
             name: client.name,
             place: client.place,
             phone: client.phone,
+            profilePhoto: client.profilePhoto || '',
             weeklyPayment: client.weeklyPayment,
             weekStart: nextDueWeek || weekStart,
             dueDate: nextDueWeek ? getDueDate(nextDueWeek) : null,
@@ -481,23 +852,18 @@ router.get('/weekly-status', async (req, res) => {
             reminderMessage: '',
             reminderPreview: schedule.isBeforeStart
               ? `Payments start from week ${nextDueWeek.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}.`
-              : '25-week schedule completed.',
+              : `${schedule.totalWeeks}-week schedule completed.`,
             schedule,
           };
         }
 
-        let payment = await WeeklyPayment.findOne({
+        const payment = paymentByClient.get(String(client._id)) || {
           client: client._id,
-          weekStart: { $gte: weekStart, $lt: weekEnd },
-        }).sort({ paid: -1, updatedAt: -1, createdAt: -1 });
-        if (!payment) {
-          payment = await WeeklyPayment.create({
-            client: client._id,
-            weekStart,
-            amount: client.weeklyPayment,
-            paid: false,
-          });
-        }
+          weekStart,
+          amount: client.weeklyPayment,
+          paid: false,
+          paymentStatus: 'pending',
+        };
         const dueDate = getDueDate(payment.weekStart);
         const daysUntilDue = payment.paid ? null : getDaysUntil(dueDate);
         const reminderPreview = payment.paid
@@ -509,6 +875,7 @@ router.get('/weekly-status', async (req, res) => {
           name: client.name,
           place: client.place,
           phone: client.phone,
+          profilePhoto: client.profilePhoto || '',
           weeklyPayment: client.weeklyPayment,
           weekStart: payment.weekStart,
           dueDate,
@@ -524,8 +891,7 @@ router.get('/weekly-status', async (req, res) => {
           reminderPreview,
           schedule,
         };
-      })
-    );
+      });
 
     res.json({ weekStart, clients: status });
   } catch (err) {
@@ -541,9 +907,13 @@ router.post('/clients/:id/renew', async (req, res) => {
     }
 
     const { amountTaken, dateTaken, interestRate, weeklyPayment, note } = req.body;
-    if (!amountTaken || !dateTaken || !interestRate || !weeklyPayment) {
-      return res.status(400).json({ message: 'Amount, date, interest and weekly payment are required' });
+    if (!amountTaken || !dateTaken || !interestRate) {
+      return res.status(400).json({ message: 'Amount, date and interest are required' });
     }
+    const renewalWeeklyPayment =
+      weeklyPayment !== undefined && weeklyPayment !== ''
+        ? Number(weeklyPayment)
+        : Number(amountTaken) / 25;
 
     const renewal = {
       previousAmountTaken: client.amountTaken,
@@ -553,7 +923,7 @@ router.post('/clients/:id/renew', async (req, res) => {
       newAmountTaken: Number(amountTaken),
       newDateTaken: new Date(dateTaken),
       newInterestRate: Number(interestRate),
-      newWeeklyPayment: Number(weeklyPayment),
+      newWeeklyPayment: renewalWeeklyPayment,
       note: note || '',
     };
 
@@ -565,7 +935,7 @@ router.post('/clients/:id/renew', async (req, res) => {
     await client.save();
 
     const weekStart = getWeekStart();
-    const schedule = getPaymentSchedule(client.dateTaken, weekStart);
+    const schedule = getPaymentSchedule(client.dateTaken, weekStart, client.totalWeeks);
     if (schedule.isActiveWeek) {
       await WeeklyPayment.findOneAndUpdate(
         { client: client._id, weekStart },
@@ -589,13 +959,111 @@ router.post('/clients/:id/renew', async (req, res) => {
   }
 });
 
+router.post('/clients/:id/top-up', async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.id);
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    const { newAmountTaken, interestRate, topUpDate, note } = req.body;
+    const newAmount = Number(newAmountTaken);
+    const rate = Number(interestRate);
+    if (!newAmount || newAmount <= 0 || Number.isNaN(newAmount)) {
+      return res.status(400).json({ message: 'Top-up amount is required' });
+    }
+    if (interestRate === undefined || interestRate === '' || Number.isNaN(rate) || rate < 0) {
+      return res.status(400).json({ message: 'Interest percentage is required' });
+    }
+
+    const paidPayments = await WeeklyPayment.find({
+      client: client._id,
+      paid: true,
+    })
+      .select('client weekStart paid amount')
+      .lean();
+    const oldTotalPayable = getClientTotalPayable(client);
+    const amountAlreadyPaid = sumPaidForCurrentPlan(client, paidPayments);
+    const previousRemainingAmount = Math.max(oldTotalPayable - amountAlreadyPaid, 0);
+    const principalAmount = previousRemainingAmount + newAmount;
+    const newInterestAmount = calcInterestAmount(principalAmount, rate);
+    const newTotalPayable = principalAmount + newInterestAmount;
+    const newWeeklyPayment = Math.ceil(newTotalPayable / TOTAL_PAYMENT_WEEKS);
+    const effectiveTopUpDate = topUpDate ? new Date(topUpDate) : new Date();
+    const firstPaymentDate = getFirstPaymentWeekStart(effectiveTopUpDate);
+
+    const topUp = {
+      previousAmountTaken: client.amountTaken,
+      previousDateTaken: client.dateTaken,
+      previousInterestRate: client.interestRate,
+      previousWeeklyPayment: client.weeklyPayment,
+      oldTotalPayable,
+      amountAlreadyPaid,
+      previousRemainingAmount,
+      newAmountTaken: newAmount,
+      newInterestRate: rate,
+      newInterestAmount,
+      newTotalPayable,
+      newWeeklyPayment,
+      totalWeeks: TOTAL_PAYMENT_WEEKS,
+      firstPaymentDate,
+      note: note || '',
+    };
+
+    client.amountTaken = newAmount;
+    client.dateTaken = effectiveTopUpDate;
+    client.interestRate = rate;
+    client.planInterestAmount = newInterestAmount;
+    client.totalPayable = newTotalPayable;
+    client.weeklyPayment = newWeeklyPayment;
+    client.topUpHistory.push(topUp);
+    await client.save();
+
+    await WeeklyPayment.updateMany(
+      {
+        client: client._id,
+        weekStart: { $gte: firstPaymentDate },
+        paid: false,
+      },
+      {
+        $set: {
+          amount: newWeeklyPayment,
+          paymentStatus: 'pending',
+          reminderSent: false,
+          reminderMessage: '',
+        },
+        $unset: {
+          reminderSentAt: '',
+          rejectedAt: '',
+          managerNote: '',
+        },
+      }
+    );
+    await ensureClientScheduledPayments(client, getWeekStart());
+
+    const safe = client.toObject();
+    delete safe.password;
+    const latestTopUp = safe.topUpHistory?.[safe.topUpHistory.length - 1] || topUp;
+    res.json({
+      ...safe,
+      ...buildClientPlanSummary(safe, []),
+      topUp: latestTopUp,
+      firstPaymentDate,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.get('/payment-approvals', async (req, res) => {
   try {
     const approvals = await WeeklyPayment.find({
       paymentStatus: { $in: ['submitted', 'rejected'] },
     })
+      .select('client amount weekStart paymentStatus screenshot screenshotUploadedAt managerNote updatedAt')
       .populate('client', 'name place phone profilePhoto')
-      .sort({ screenshotUploadedAt: -1, updatedAt: -1 });
+      .sort({ screenshotUploadedAt: -1, updatedAt: -1 })
+      .lean();
 
     res.json(
       approvals
@@ -628,7 +1096,7 @@ router.patch('/payment-approvals/:paymentId', async (req, res) => {
       return res.status(400).json({ message: 'Action must be approve or reject' });
     }
 
-    const payment = await WeeklyPayment.findById(req.params.paymentId).populate('client');
+    const payment = await WeeklyPayment.findById(req.params.paymentId).populate('client', 'name place phone weeklyPayment dateTaken totalWeeks');
     if (!payment) {
       return res.status(404).json({ message: 'Payment record not found' });
     }
@@ -652,7 +1120,15 @@ router.patch('/payment-approvals/:paymentId', async (req, res) => {
     }
 
     await payment.save();
-    res.json(payment);
+    res.json({
+      _id: payment._id,
+      paid: payment.paid,
+      paidAt: payment.paidAt,
+      paymentStatus: payment.paymentStatus,
+      approvedAt: payment.approvedAt,
+      rejectedAt: payment.rejectedAt,
+      managerNote: payment.managerNote,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -677,7 +1153,13 @@ router.patch('/payments/:paymentId', async (req, res) => {
       payment.managerNote = '';
     }
     await payment.save();
-    res.json(payment);
+    res.json({
+      _id: payment._id,
+      paid: payment.paid,
+      paidAt: payment.paidAt,
+      paymentStatus: payment.paymentStatus,
+      approvedAt: payment.approvedAt,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -685,7 +1167,7 @@ router.patch('/payments/:paymentId', async (req, res) => {
 
 router.get('/collections', async (req, res) => {
   try {
-    const entries = await CollectionEntry.find().sort({ createdAt: -1 });
+    const entries = await CollectionEntry.find().sort({ createdAt: -1 }).lean();
     res.json(entries);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -749,7 +1231,7 @@ router.delete('/collections/:id', async (req, res) => {
 
 router.post('/send-reminder/:paymentId', async (req, res) => {
   try {
-    const payment = await WeeklyPayment.findById(req.params.paymentId).populate('client');
+    const payment = await WeeklyPayment.findById(req.params.paymentId).populate('client', 'name phone weeklyPayment dateTaken totalWeeks');
     if (!payment) {
       return res.status(404).json({ message: 'Payment record not found' });
     }
@@ -780,10 +1262,12 @@ router.post('/send-reminder/:paymentId', async (req, res) => {
 router.post('/send-reminders/bulk', async (req, res) => {
   try {
     const weekStart = getWeekStart();
+    const clients = await Client.find().select('-password').lean();
+    await ensureScheduledPaymentsForClients(clients, weekStart);
     const payments = consolidatePayments(
       await WeeklyPayment.find({
         weekStart: { $gte: weekStart, $lt: nextWeekStart(weekStart) },
-      }).populate('client')
+      }).populate('client', 'name phone weeklyPayment dateTaken totalWeeks')
     ).filter((payment) => !payment.paid && isScheduledPayment(payment));
     let sent = 0;
 
@@ -809,9 +1293,13 @@ router.post('/send-reminders/bulk', async (req, res) => {
 router.get('/defaulters', async (req, res) => {
   try {
     const currentWeekStart = getWeekStart();
+    const clients = await Client.find().select('-password').lean();
+    await ensureScheduledPaymentsForClients(clients, currentWeekStart);
     const payments = await WeeklyPayment.find()
-      .populate('client')
-      .sort({ weekStart: 1 });
+      .select('client weekStart paid paidAt amount paymentStatus reminderSent reminderMessage updatedAt createdAt')
+      .populate('client', 'name place phone weeklyPayment dateTaken totalWeeks')
+      .sort({ weekStart: 1 })
+      .lean();
     const unpaid = consolidatePayments(payments)
       .filter(isScheduledPayment)
       .filter((payment) => !payment.paid);
@@ -823,6 +1311,7 @@ router.get('/defaulters', async (req, res) => {
         const dueDate = getDueDate(payment.weekStart);
         const daysUntilDue = getDaysUntil(dueDate);
         const isPastWeek = payment.weekStart < currentWeekStart;
+        const schedule = getPaymentSchedule(client.dateTaken, payment.weekStart, client.totalWeeks);
 
         return {
           paymentId: payment._id,
@@ -831,6 +1320,7 @@ router.get('/defaulters', async (req, res) => {
           place: client.place,
           phone: client.phone,
           weeklyPayment: payment.amount || client.weeklyPayment,
+          weekNumber: schedule.currentWeekNumber,
           weekStart: payment.weekStart,
           dueDate,
           daysUntilDue,
@@ -855,12 +1345,15 @@ router.get('/reports/daily-collections', async (req, res) => {
 
     const entries = await CollectionEntry.find({
       entryDate: { $gte: dayStart, $lte: dayEnd },
-    }).sort({ createdAt: -1 });
+    }).sort({ createdAt: -1 }).lean();
 
     const weeklyPaid = await WeeklyPayment.find({
       paid: true,
       paidAt: { $gte: dayStart, $lte: dayEnd },
-    }).populate('client', 'name place');
+    })
+      .select('client amount paidAt')
+      .populate('client', 'name place')
+      .lean();
 
     const collectionTotal = entries.reduce((s, e) => s + Number(e.collection || 0), 0);
     const chargesTotal = entries.reduce((s, e) => s + Number(e.charges || 0), 0);
@@ -900,12 +1393,12 @@ router.get('/reports/monthly-profit', async (req, res) => {
 
     const entries = await CollectionEntry.find({
       entryDate: { $gte: monthStart, $lte: monthEnd },
-    });
+    }).lean();
 
     const weeklyPaid = await WeeklyPayment.find({
       paid: true,
       paidAt: { $gte: monthStart, $lte: monthEnd },
-    });
+    }).select('amount').lean();
 
     const collectionIncome = entries.reduce((s, e) => s + Number(e.collection || 0), 0);
     const chargesIncome = entries.reduce((s, e) => s + Number(e.charges || 0), 0);

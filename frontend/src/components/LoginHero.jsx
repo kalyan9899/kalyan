@@ -6,10 +6,10 @@ export default function LoginHero() {
     <section className="lg-hero">
       <div className="lg-hero__copy">
         <div className="lg-hero__brand-showcase">
-          <img src={LOGO_SRC} alt={`${BRAND_NAME} Finance`} />
+          <img src={LOGO_SRC} alt={`${BRAND_NAME} Finance`} loading="lazy" decoding="async" />
         </div>
         <div className="lg-hero__brand-mini">
-          <img src={LOGO_SRC} alt="" className="lg-hero__brand-logo" />
+          <img src={LOGO_SRC} alt="" className="lg-hero__brand-logo" loading="lazy" decoding="async" />
           <span>{BRAND_NAME}</span>
         </div>
 
@@ -93,7 +93,7 @@ export default function LoginHero() {
                 <span className="lg-dash__eyebrow">Dashboard</span>
                 <strong>Lakshmi Ganapati</strong>
               </div>
-              <img src={LOGO_SRC} alt="" className="lg-dash__avatar lg-dash__avatar--logo" />
+              <img src={LOGO_SRC} alt="" className="lg-dash__avatar lg-dash__avatar--logo" loading="lazy" decoding="async" />
             </header>
 
             <div className="lg-dash__metrics">
@@ -134,7 +134,7 @@ export default function LoginHero() {
                   <strong>Lakshmi M.</strong>
                   <small>₹3,000 · Weekly</small>
                 </div>
-                <span className="lg-dash__status pending">Due</span>
+                <span className="lg-dash__status pending">Pending</span>
               </li>
               <li>
                 <span className="lg-dash__user">SP</span>

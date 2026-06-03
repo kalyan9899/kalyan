@@ -1,11 +1,10 @@
-import { useEffect, useState, useRef } from 'react';
+import { Suspense, lazy, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
-import { downloadPaymentReceipt } from '../utils/receiptPdf';
-import DashboardBg from '../components/DashboardBg';
-import LoadingSpinner from '../components/LoadingSpinner';
 import CustomerSidebar from '../components/CustomerSidebar';
 import CustomerAvatar from '../components/CustomerAvatar';
+
+const DashboardBg = lazy(() => import('../components/DashboardBg'));
 
 function formatDate(d) {
   return new Date(d).toLocaleDateString('en-IN', {
@@ -21,9 +20,53 @@ function formatMoney(n) {
 
 const pageTitles = {
   payments: 'Payment history',
-  reminders: 'Due date reminders',
+  reminders: 'Weekly reminders',
   profile: 'Profile',
 };
+
+function CustomerDashboardSkeleton() {
+  return (
+    <div className="manager-layout dash-animated customer-dashboard-skeleton">
+      <Suspense fallback={null}>
+        <DashboardBg />
+      </Suspense>
+      <aside className="manager-sidebar customer-skeleton-sidebar" aria-hidden="true">
+        <div className="customer-skeleton-logo" />
+        <div className="customer-skeleton-line wide" />
+        <div className="customer-skeleton-nav" />
+        <div className="customer-skeleton-nav" />
+        <div className="customer-skeleton-nav" />
+      </aside>
+      <main className="manager-main">
+        <header className="dash-header">
+          <div>
+            <div className="customer-skeleton-line title" />
+            <div className="customer-skeleton-line subtitle" />
+          </div>
+          <div className="customer-skeleton-avatar" />
+        </header>
+        <section className="section">
+          <div className="profile-photo-block">
+            <div className="customer-skeleton-avatar large" />
+            <div className="customer-skeleton-stack">
+              <div className="customer-skeleton-line title" />
+              <div className="customer-skeleton-line subtitle" />
+              <div className="customer-skeleton-actions" />
+            </div>
+          </div>
+          <div className="card-grid">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div key={index} className="info-card customer-skeleton-card">
+                <div className="customer-skeleton-line" />
+                <div className="customer-skeleton-line value" />
+              </div>
+            ))}
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
 
 export default function CustomerDashboard() {
   const navigate = useNavigate();
@@ -47,15 +90,12 @@ export default function CustomerDashboard() {
 
     const loadCustomerData = (silent = false) => {
       if (!silent) setLoading(true);
-      return Promise.all([
-        api.getCustomerProfile(),
-        api.getCustomerPayments(),
-        api.getCustomerReminders(),
-      ])
-        .then(([p, pay, rem]) => {
+      return api
+        .getCustomerDashboard()
+        .then(({ profile: p, payments: pay, reminders: rem }) => {
           if (!active) return;
           setProfile(p);
-          setPayments(pay);
+          setPayments(pay || []);
           setReminderData(rem);
           setError('');
         })
@@ -68,7 +108,9 @@ export default function CustomerDashboard() {
     };
 
     loadCustomerData();
-    const refreshTimer = setInterval(() => loadCustomerData(true), 10000);
+    const refreshTimer = setInterval(() => {
+      if (!document.hidden) loadCustomerData(true);
+    }, 15000);
     return () => {
       active = false;
       clearInterval(refreshTimer);
@@ -83,7 +125,7 @@ export default function CustomerDashboard() {
 
   const getUpiLink = (amount) => {
     const params = new URLSearchParams({
-      pa: '9346697486@ptsbi',
+      pa: '9346697486@axl',
       pn: 'Lakshmi Ganapati Finance',
       am: Number(amount || 0).toFixed(2),
       cu: 'INR',
@@ -105,15 +147,19 @@ export default function CustomerDashboard() {
       setPaymentMessage('Please choose a JPG or PNG screenshot.');
       return;
     }
-    if (file.size > 1024 * 1024) {
-      setPaymentMessage('Screenshot must be under 1 MB.');
+    if (file.size > 3 * 1024 * 1024) {
+      setPaymentMessage('Screenshot must be under 3 MB before compression.');
       return;
     }
 
     setScreenshotUploading(true);
     setPaymentMessage('');
     try {
-      const dataUrl = await readFileAsDataUrl(file);
+      const dataUrl = await readCompressedImageAsDataUrl(file, {
+        maxSize: 1280,
+        mimeType: 'image/jpeg',
+        quality: 0.82,
+      });
       const updated = await api.uploadPaymentScreenshot(activePaymentId, dataUrl);
       setPayments((current) =>
         current.map((p) =>
@@ -134,12 +180,20 @@ export default function CustomerDashboard() {
     }
   };
 
-  const handleDownloadReceipt = (payment) => {
-    downloadPaymentReceipt(
+  const handleDownloadReceipt = async (payment) => {
+    const totalAmount = Number(profile.totalPayable ?? (Number(profile.amountTaken) + Number(profile.interestAmount)));
+    const paidThroughReceipt = payments
+      .filter((p) => p.paid && new Date(p.weekStart) <= new Date(payment.weekStart))
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const { downloadPaymentReceipt } = await import('../utils/receiptPdf');
+    await downloadPaymentReceipt(
       {
         name: profile.name,
         place: profile.place,
         phone: profile.phone,
+        amountTaken: profile.amountTaken,
+        totalAmount,
+        totalPaid: paidThroughReceipt,
       },
       payment
     );
@@ -152,15 +206,19 @@ export default function CustomerDashboard() {
       setPhotoMessage('Please choose a JPEG or PNG image.');
       return;
     }
-    if (file.size > 300 * 1024) {
-      setPhotoMessage('Image must be under 300 KB.');
+    if (file.size > 2 * 1024 * 1024) {
+      setPhotoMessage('Image must be under 2 MB before compression.');
       return;
     }
 
     setPhotoUploading(true);
     setPhotoMessage('');
     try {
-      const dataUrl = await readFileAsDataUrl(file);
+      const dataUrl = await readCompressedImageAsDataUrl(file, {
+        maxSize: 520,
+        mimeType: 'image/webp',
+        quality: 0.76,
+      });
       const { profilePhoto } = await api.uploadCustomerPhoto(dataUrl);
       setProfile((prev) => ({ ...prev, profilePhoto }));
       setPhotoMessage('Profile photo updated.');
@@ -193,14 +251,15 @@ export default function CustomerDashboard() {
   const totalPaid = payments.filter((p) => p.paid).reduce((sum, p) => sum + p.amount, 0);
   const approvalPendingCount = payments.filter((p) => p.paymentStatus === 'submitted').length;
 
-  if (loading) return <LoadingSpinner />;
+  if (loading) return <CustomerDashboardSkeleton />;
   if (error) return <div className="page center alert error anim-shake">{error}</div>;
   if (!profile) return null;
 
-  const totalAmount = Number(profile.amountTaken) + Number(profile.interestAmount);
+  const totalAmount = Number(profile.totalPayable ?? (Number(profile.amountTaken) + Number(profile.interestAmount)));
   const remainingAmount = Math.max(totalAmount - totalPaid, 0);
   const paymentProgress = totalAmount > 0 ? Math.min(100, Math.round((totalPaid / totalAmount) * 100)) : 0;
-  const latestPayments = [...payments]
+  const latestPayments = payments
+    .filter((p) => !p.isFuture)
     .sort((a, b) => new Date(b.weekStart) - new Date(a.weekStart))
     .slice(0, 6);
   const paidStreak = latestPayments.reduce((streak, payment) => {
@@ -218,8 +277,8 @@ export default function CustomerDashboard() {
     { label: 'Interest rate', value: `${profile.interestRate}%` },
     { label: 'Interest amount', value: formatMoney(profile.interestAmount) },
     {
-      label: 'Total amount',
-      value: formatMoney(Number(profile.amountTaken) + Number(profile.interestAmount)),
+      label: 'Total payable',
+      value: formatMoney(totalAmount),
       highlight: true,
     },
     {
@@ -230,24 +289,32 @@ export default function CustomerDashboard() {
     },
   ];
 
-  const dueLabel = paymentSchedule.isAfterSchedule
-    ? '25 weeks complete'
-    : profile.isOverdue
-      ? 'Overdue'
-      : profile.daysUntilDue === 0
-        ? 'Due today'
-        : profile.daysUntilDue === 1
-          ? 'Due tomorrow'
-          : `${profile.daysUntilDue} days left`;
+  const totalPlanWeeks = paymentSchedule.totalWeeks || profile.totalWeeks || 25;
+  const reminderSchedule = reminderData?.paymentSchedule || {};
+  const reminderTotalWeeks = reminderSchedule.totalWeeks || totalPlanWeeks;
+
+  const currentWeekLabel = paymentSchedule.isBeforeStart
+    ? `Week 1 starts ${formatDate(paymentSchedule.firstPaymentWeekStart)}`
+    : paymentSchedule.isAfterSchedule
+      ? `${totalPlanWeeks} weeks complete`
+      : `Week ${paymentSchedule.currentWeekNumber || 1} of ${totalPlanWeeks}`;
   const paymentStatusText = paymentSchedule.isBeforeStart
     ? `Payments start from ${formatDate(paymentSchedule.firstPaymentWeekStart)}`
     : paymentSchedule.isAfterSchedule
-      ? '25-week payment schedule complete'
-      : `This week's payment: ${profile.currentWeekPaid ? 'Paid' : 'Pending'}`;
+      ? `${totalPlanWeeks}-week payment schedule complete`
+      : `${currentWeekLabel}: ${profile.currentWeekPaid ? 'Paid' : 'Pending'}`;
+  const reminderStartsNextWeek = Boolean(reminderSchedule.isBeforeStart);
+  const reminderWeekLabel = reminderStartsNextWeek
+    ? `Week 1 starts ${formatDate(reminderSchedule.firstPaymentWeekStart)}`
+    : reminderSchedule.isAfterSchedule
+      ? `${reminderTotalWeeks} weeks complete`
+      : `Week ${reminderSchedule.currentWeekNumber || 1} of ${reminderTotalWeeks}`;
 
   return (
     <div className="manager-layout dash-animated">
-      <DashboardBg />
+      <Suspense fallback={null}>
+        <DashboardBg />
+      </Suspense>
       <CustomerSidebar
         active={tab}
         onNavigate={setTab}
@@ -277,11 +344,6 @@ export default function CustomerDashboard() {
               className={`status-banner ${profile.currentWeekPaid ? 'paid anim-fade-up' : 'pending'}`}
             >
               {paymentStatusText}
-              {!profile.currentWeekPaid && !paymentSchedule.isAfterSchedule && (
-                <span className="status-banner__due">
-                  · Due by {formatDate(profile.dueDate)} ({dueLabel})
-                </span>
-              )}
             </div>
 
             {profile.currentWeekReminderSent && !profile.currentWeekPaid && (
@@ -325,9 +387,9 @@ export default function CustomerDashboard() {
               <div className="customer-feature-card">
                 <span className="customer-feature-card__icon">₹</span>
                 <div>
-                  <span className="customer-stat__label">Next due</span>
-                  <strong>{paymentSchedule.isAfterSchedule ? 'Completed' : profile.currentWeekPaid ? 'All clear' : formatDate(profile.dueDate)}</strong>
-                  <p>{paymentSchedule.isBeforeStart ? 'Week 1 starts next week' : profile.currentWeekPaid ? 'This week is paid' : dueLabel}</p>
+                  <span className="customer-stat__label">Current week</span>
+                  <strong>{currentWeekLabel}</strong>
+                  <p>{paymentSchedule.isBeforeStart ? 'Starts next week' : profile.currentWeekPaid ? 'Paid' : 'Pending'}</p>
                 </div>
               </div>
               <div className="customer-feature-card">
@@ -368,12 +430,12 @@ export default function CustomerDashboard() {
                     <strong>{profile.name}</strong>
                   </div>
                   <div>
-                    <span>Due Amount</span>
+                    <span>Payment Amount</span>
                     <strong>{formatMoney(profile.upiPayment?.amount || profile.weeklyPayment)}</strong>
                   </div>
                   <div>
                     <span>UPI ID</span>
-                    <strong>9346697486@ptsbi</strong>
+                    <strong>9346697486@axl</strong>
                   </div>
                   <div>
                     <span>Payment Note</span>
@@ -433,8 +495,7 @@ export default function CustomerDashboard() {
               <table>
                 <thead>
                   <tr>
-                    <th>Week starting</th>
-                    <th>Due by</th>
+                    <th>Week</th>
                     <th>Amount</th>
                     <th>Status</th>
                     <th>Action</th>
@@ -443,7 +504,7 @@ export default function CustomerDashboard() {
                 <tbody>
                   {payments.length === 0 ? (
                     <tr>
-                      <td colSpan={5}>No payment records yet</td>
+                      <td colSpan={4}>No payment records yet</td>
                     </tr>
                   ) : (
                     payments.map((p, i) => (
@@ -452,8 +513,10 @@ export default function CustomerDashboard() {
                         className="anim-row-in"
                         style={{ animationDelay: `${0.08 + i * 0.05}s` }}
                       >
-                        <td>{formatDate(p.weekStart)}</td>
-                        <td>{formatDate(p.dueDate)}</td>
+                        <td>
+                          <strong>Week {p.weekNumber || i + 1}</strong>
+                          <span className="reminder-list__due">Starting {formatDate(p.weekStart)}</span>
+                        </td>
                         <td>{formatMoney(p.amount)}</td>
                         <td>
                           <span className={`badge ${p.paid ? 'success' : 'warning'}`}>
@@ -472,6 +535,8 @@ export default function CustomerDashboard() {
                             >
                               PDF receipt
                             </button>
+                          ) : p.isFuture || !p.paymentId ? (
+                            <span className="badge warning">Pending</span>
                           ) : (
                             <>
                               <button
@@ -501,16 +566,20 @@ export default function CustomerDashboard() {
 
         {tab === 'reminders' && reminderData && (
           <section className="section anim-tab-in">
-            <div
-              className={`due-reminder-card ${profile.isOverdue ? 'overdue' : profile.daysUntilDue <= 2 ? 'urgent' : ''}`}
-            >
-              <h2>Next payment due</h2>
-              <p className="due-reminder-card__date">{formatDate(reminderData.nextDueDate)}</p>
-              <p className="due-reminder-card__countdown">{dueLabel}</p>
+            <div className="due-reminder-card">
+              <h2>Weekly payment status</h2>
+              <p className="due-reminder-card__date">{reminderWeekLabel}</p>
+              <p className="due-reminder-card__countdown">
+                {reminderStartsNextWeek ? 'Starts next week' : reminderData.currentWeekPaid ? 'Paid' : 'Pending'}
+              </p>
               <p className="due-reminder-card__amount">
                 Weekly amount: {formatMoney(reminderData.weeklyAmount || profile.weeklyPayment)}
               </p>
-              {reminderData.currentWeekPaid ? (
+              {reminderStartsNextWeek ? (
+                <span className="badge warning">Week 1 starts next week</span>
+              ) : reminderSchedule.isAfterSchedule ? (
+                <span className="badge success">{reminderTotalWeeks} weeks complete</span>
+              ) : reminderData.currentWeekPaid ? (
                 <span className="badge success">This week is paid</span>
               ) : (
                 <span className="badge warning">Payment pending for this week</span>
@@ -529,12 +598,7 @@ export default function CustomerDashboard() {
                       <div>
                         <strong>Week of {formatDate(r.weekStart)}</strong>
                         <span className="reminder-list__due">
-                          Due {formatDate(r.dueDate)}
-                          {!r.isCurrentWeek && r.daysUntilDue < 0
-                            ? ' (overdue)'
-                            : r.daysUntilDue >= 0
-                              ? ` · ${r.daysUntilDue} days left`
-                              : ''}
+                          Pending weekly payment
                         </span>
                       </div>
                       <p>{r.reminderMessage || 'Please pay your weekly amount.'}</p>
@@ -544,39 +608,34 @@ export default function CustomerDashboard() {
               </ul>
             )}
 
-            <h2 style={{ marginTop: '1.5rem' }}>Upcoming due dates</h2>
+            <h2 style={{ marginTop: '1.5rem' }}>{totalPlanWeeks} week payment plan</h2>
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>Week</th>
-                    <th>Due by</th>
                     <th>Amount</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {reminderData.reminders.length === 0 ? (
+                  {payments.length === 0 ? (
                     <tr>
-                      <td colSpan={4}>No pending payments</td>
+                      <td colSpan={3}>No weekly payment plan yet</td>
                     </tr>
                   ) : (
-                    reminderData.reminders.map((r) => (
-                      <tr key={r._id}>
-                        <td>{formatDate(r.weekStart)}</td>
-                        <td>{formatDate(r.dueDate)}</td>
-                        <td>{formatMoney(r.amount)}</td>
+                    payments.map((p) => (
+                      <tr key={p._id}>
                         <td>
-                          {r.isCurrentWeek && reminderData.currentWeekPaid ? (
+                          <strong>Week {p.weekNumber}</strong>
+                          <span className="reminder-list__due">Starting {formatDate(p.weekStart)}</span>
+                        </td>
+                        <td>{formatMoney(p.amount)}</td>
+                        <td>
+                          {p.paid ? (
                             <span className="badge success">Paid</span>
                           ) : (
-                            <span className="badge warning">
-                              {r.daysUntilDue < 0
-                                ? 'Overdue'
-                                : r.daysUntilDue === 0
-                                  ? 'Due today'
-                                  : `${r.daysUntilDue} days`}
-                            </span>
+                            <span className="badge warning">Pending</span>
                           )}
                         </td>
                       </tr>
@@ -644,21 +703,56 @@ export default function CustomerDashboard() {
               ))}
             </div>
 
-            <h2 style={{ marginTop: '1.5rem' }}>Renewal history</h2>
-            {!profile.renewalHistory?.length ? (
-              <p className="muted-text">No renewals recorded yet.</p>
+            {profile.latestTopUp && (
+              <div className="topup-plan-card anim-fade-up">
+                <div className="topup-plan-card__head">
+                  <div>
+                    <span>Active top-up plan</span>
+                    <strong>{formatMoney(profile.latestTopUp.newTotalPayable)}</strong>
+                  </div>
+                  <em>{profile.latestTopUp.totalWeeks || totalPlanWeeks} weeks</em>
+                </div>
+                <div className="topup-plan-grid">
+                  <div>
+                    <span>Old balance</span>
+                    <strong>{formatMoney(profile.latestTopUp.previousRemainingAmount)}</strong>
+                  </div>
+                  <div>
+                    <span>Top-up amount</span>
+                    <strong>{formatMoney(profile.latestTopUp.newAmountTaken)}</strong>
+                  </div>
+                  <div>
+                    <span>Interest</span>
+                    <strong>{formatMoney(profile.latestTopUp.newInterestAmount)}</strong>
+                  </div>
+                  <div>
+                    <span>Weekly payment</span>
+                    <strong>{formatMoney(profile.latestTopUp.newWeeklyPayment)}</strong>
+                  </div>
+                  <div>
+                    <span>First payment</span>
+                    <strong>{formatDate(profile.latestTopUp.firstPaymentDate)}</strong>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <h2 style={{ marginTop: '1.5rem' }}>Top-up history</h2>
+            {!profile.topUpHistory?.length ? (
+              <p className="muted-text">No top-ups recorded yet.</p>
             ) : (
               <div className="renewal-timeline">
-                {profile.renewalHistory.map((renewal, i) => (
-                  <article key={`${renewal.renewedAt}-${i}`} className="renewal-timeline__item anim-fade-up">
+                {profile.topUpHistory.map((topUp, i) => (
+                  <article key={`${topUp.topUpAt}-${i}`} className="renewal-timeline__item anim-fade-up">
                     <div>
-                      <strong>Renewed on {formatDate(renewal.renewedAt)}</strong>
-                      {renewal.note && <p>{renewal.note}</p>}
+                      <strong>Top-up on {formatDate(topUp.topUpAt)}</strong>
+                      {topUp.note && <p>{topUp.note}</p>}
                     </div>
                     <div className="renewal-timeline__amounts">
-                      <span>Old {formatMoney(renewal.previousAmountTaken)}</span>
-                      <span>New {formatMoney(renewal.newAmountTaken)}</span>
-                      <span>Weekly {formatMoney(renewal.newWeeklyPayment)}</span>
+                      <span>Old balance {formatMoney(topUp.previousRemainingAmount)}</span>
+                      <span>Top-up {formatMoney(topUp.newAmountTaken)}</span>
+                      <span>Total {formatMoney(topUp.newTotalPayable)}</span>
+                      <span>Weekly {formatMoney(topUp.newWeeklyPayment)}</span>
                     </div>
                   </article>
                 ))}
@@ -678,4 +772,41 @@ function readFileAsDataUrl(file) {
     reader.onerror = () => reject(new Error('Could not read image file'));
     reader.readAsDataURL(file);
   });
+}
+
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => resolve({ image, url });
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not load image file'));
+    };
+    image.src = url;
+  });
+}
+
+async function readCompressedImageAsDataUrl(file, options = {}) {
+  if (!file.type?.startsWith('image/') || typeof document === 'undefined') {
+    return readFileAsDataUrl(file);
+  }
+
+  const { image, url } = await loadImageFromFile(file);
+  try {
+    const maxSize = options.maxSize || 1280;
+    const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext('2d', { alpha: options.mimeType === 'image/png' });
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, options.mimeType || file.type, options.quality || 0.82)
+    );
+    return blob ? readFileAsDataUrl(blob) : readFileAsDataUrl(file);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }

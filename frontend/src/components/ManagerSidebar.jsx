@@ -3,7 +3,7 @@ import { LOGO_SRC, BRAND_NAME } from '../constants/brand';
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'grid' },
-  { id: 'daily-report', label: 'Daily Collection', icon: 'list' },
+  { id: 'client-list', label: 'Client List', icon: 'list' },
   { id: 'weekly', label: 'Weekly Payments', icon: 'calendar' },
   { id: 'payment-approvals', label: 'Payment Approvals', icon: 'rupee' },
   { id: 'clients', label: 'Clients', icon: 'users' },
@@ -106,7 +106,7 @@ export default function ManagerSidebar({
 
       <aside className={`manager-sidebar ${mobileOpen ? 'manager-sidebar--open' : ''}`}>
         <div className="manager-sidebar__brand">
-          <img src={LOGO_SRC} alt="" className="manager-sidebar__logo" />
+          <img src={LOGO_SRC} alt="" className="manager-sidebar__logo" loading="lazy" decoding="async" />
           <div>
             <strong>{BRAND_NAME.toUpperCase()}</strong>
             <span>FINANCE</span>
@@ -132,7 +132,7 @@ export default function ManagerSidebar({
         </nav>
 
         <div className="manager-sidebar__deco" aria-hidden="true">
-          <img src={LOGO_SRC} alt="" className="manager-sidebar__deco-logo" />
+          <img src={LOGO_SRC} alt="" className="manager-sidebar__deco-logo" loading="lazy" decoding="async" />
           <p>Trust · Transparency · Growth</p>
         </div>
 

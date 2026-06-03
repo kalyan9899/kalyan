@@ -14,4 +14,9 @@ const collectionEntrySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+collectionEntrySchema.index({ entryDate: -1 });
+collectionEntrySchema.index({ createdAt: -1 });
+collectionEntrySchema.index({ name: 1 });
+collectionEntrySchema.index({ client: 1, entryDate: -1 });
+
 module.exports = mongoose.model('CollectionEntry', collectionEntrySchema);

@@ -69,7 +69,7 @@ function CustomerSidebar({
 
       <aside className={`manager-sidebar ${mobileOpen ? 'manager-sidebar--open' : ''}`}>
         <div className="manager-sidebar__brand">
-          <img src={LOGO_SRC} alt="" className="manager-sidebar__logo" />
+          <img src={LOGO_SRC} alt="" className="manager-sidebar__logo" loading="lazy" decoding="async" />
           <div>
             <strong>{BRAND_NAME}</strong>
             <span>Customer</span>

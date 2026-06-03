@@ -32,6 +32,7 @@ async function request(url, options = {}) {
 
 export const api = {
   login: (body) => request('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+  getCustomerDashboard: () => request('/customer/dashboard'),
   getCustomerProfile: () => request('/customer/profile'),
   getCustomerPayments: () => request('/customer/payments'),
   getCustomerReminders: () => request('/customer/reminders'),
@@ -51,6 +52,12 @@ export const api = {
     const query = q ? `?q=${encodeURIComponent(q)}` : '';
     return request(`/manager/clients${query}`);
   },
+  getClientPaymentPlan: (id) => request(`/manager/clients/${id}/payment-plan`),
+  updateClientPaymentPlanWeek: (id, weekNumber, paid) =>
+    request(`/manager/clients/${id}/payment-plan/${weekNumber}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ paid }),
+    }),
   addClient: (body) => request('/manager/clients', { method: 'POST', body: JSON.stringify(body) }),
   updateClient: (id, body) =>
     request(`/manager/clients/${id}`, {
@@ -59,6 +66,11 @@ export const api = {
     }),
   renewClient: (id, body) =>
     request(`/manager/clients/${id}/renew`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  topUpClient: (id, body) =>
+    request(`/manager/clients/${id}/top-up`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
