@@ -34,6 +34,18 @@ const emptyCollection = {
   entryDate: new Date().toISOString().slice(0, 10),
 };
 
+const COLLECTION_AMOUNT_FIELDS = [
+  { name: 'previousAmount', label: 'Previous Amount', sign: '+' },
+  { name: 'collection', label: 'Collection', sign: '+' },
+  { name: 'charges', label: 'Charges', sign: '-' },
+  { name: 'payments', label: 'Payments', sign: '-' },
+];
+
+const emptyCollectionAdjustments = COLLECTION_AMOUNT_FIELDS.reduce(
+  (fields, field) => ({ ...fields, [field.name]: '' }),
+  {}
+);
+
 const emptyRenewal = {
   previousAmount: '',
   amountTaken: '',
@@ -103,10 +115,18 @@ function formatMoney(n) {
 function calcBalance(row) {
   return (
     Number(row.previousAmount || 0) +
-    Number(row.collection || 0) +
+    Number(row.collection || 0) -
     Number(row.charges || 0) -
     Number(row.payments || 0)
   );
+}
+
+function formatAmountInput(value) {
+  if (!Number.isFinite(value)) return '';
+  const rounded = Math.round(value * 100) / 100;
+  return Number.isInteger(rounded)
+    ? String(rounded)
+    : String(rounded).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
 }
 
 function calcRenewalPrincipal(previousAmount, newAmount) {
@@ -114,23 +134,54 @@ function calcRenewalPrincipal(previousAmount, newAmount) {
   const next = Number(newAmount || 0);
   return previous + next;
 }
-function calcTopUpInterest(newAmount, interestRate) {
-  return calcInterestAmount(newAmount, interestRate);
+function calcTopUpInterest(previousAmount, newAmount, interestRate) {
+  const totalPrincipal =
+    Number(previousAmount || 0) +
+    Number(newAmount || 0);
+
+  return (totalPrincipal * Number(interestRate || 0)) / 100;
 }
 
 function calcTopUpTotal(previousAmount, newAmount, interestRate) {
-  const principal = calcRenewalPrincipal(previousAmount, newAmount);
-  return principal + calcTopUpInterest(newAmount, interestRate);
+  const totalPrincipal =
+    Number(previousAmount || 0) +
+    Number(newAmount || 0);
+
+  const interest =
+    (totalPrincipal * Number(interestRate || 0)) / 100;
+
+  return totalPrincipal + interest;
 }
 
-function calcRenewalWeeklyAmount(previousAmount, newAmount, interestRate) {
+function calcRenewalWeeklyAmount(
+  previousAmount,
+  newAmount,
+  interestRate
+) {
   if (newAmount === '') return '';
-  const value = calcTopUpTotal(previousAmount, newAmount, interestRate);
-  if (!value) return '';
-  const weekly = value / RENEWAL_TOTAL_WEEKS;
-  return Number.isInteger(weekly) ? String(weekly) : weekly.toFixed(2);
-}
 
+  const totalPayable = calcTopUpTotal(
+    previousAmount,
+    newAmount,
+    interestRate
+  );
+
+  let totalWeeks = 25;
+
+  if (Number(interestRate) === 20) {
+    totalWeeks = 12;
+  }
+
+  if (Number(interestRate) === 25) {
+    totalWeeks = 25;
+  }
+
+  const weekly = totalPayable / totalWeeks;
+
+  return Number.isInteger(weekly)
+    ? String(weekly)
+    : weekly.toFixed(2);
+}
 function getFirstPaymentDateFromTopUp(date) {
   const d = new Date(date || new Date());
   d.setHours(0, 0, 0, 0);
@@ -264,6 +315,438 @@ function exportToPDF(paidList, pendingList, weekLabel, totalCollection) {
   setTimeout(() => win.print(), 300);
 }
 
+function pdfText(value, fallback = '-') {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return text || fallback;
+}
+
+function pdfMoney(value) {
+  return `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
+}
+
+function drawPdfCell(doc, text, x, y, width, options = {}) {
+  const lines = doc.splitTextToSize(pdfText(text), width).slice(0, options.lines || 1);
+  doc.text(lines, x, y);
+}
+
+const MONTHLY_DETAIL_LABELS = {
+  collectionIncome: 'Collection income details',
+  weeklyIncome: 'Weekly income details',
+  charges: 'Charges details',
+  paymentsOut: 'Payments out details',
+  monthlyProfit: 'Monthly profit breakdown',
+};
+
+const MONTHLY_COLLECTION_DETAIL_CONFIG = {
+  collectionIncome: {
+    field: 'collection',
+    fallbackName: 'Collection entry',
+  },
+  charges: {
+    field: 'charges',
+    fallbackName: 'Charge entry',
+  },
+  paymentsOut: {
+    field: 'payments',
+    fallbackName: 'Payment entry',
+  },
+};
+
+function isInReportMonth(value, monthValue) {
+  if (!value || !monthValue) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const [year, month] = monthValue.split('-').map(Number);
+  return date.getFullYear() === year && date.getMonth() + 1 === month;
+}
+
+function buildMonthlyProfitRows(summary = {}) {
+  const collectionIncome = Number(summary.collectionIncome || 0);
+  const weeklyIncome = Number(summary.weeklyIncome || 0);
+  const chargesIncome = Number(summary.chargesIncome || 0);
+  const paymentsOut = Number(summary.paymentsOut || 0);
+  const profit = Number(summary.profit ?? collectionIncome + weeklyIncome + chargesIncome - paymentsOut);
+
+  return [
+    { label: 'Collection income', amount: collectionIncome, type: 'income' },
+    { label: 'Weekly income', amount: weeklyIncome, type: 'income' },
+    { label: 'Charges', amount: chargesIncome, type: 'income' },
+    { label: 'Payments out', amount: paymentsOut, type: 'expense' },
+    { label: 'Monthly profit', amount: profit, type: profit >= 0 ? 'profit' : 'loss' },
+  ];
+}
+
+function buildCollectionDetailRows(entries = [], monthValue, detailKey) {
+  const config = MONTHLY_COLLECTION_DETAIL_CONFIG[detailKey];
+  if (!config) return [];
+
+  return entries
+    .filter((entry) => isInReportMonth(entry.entryDate, monthValue))
+    .filter((entry) => Number(entry[config.field] || 0) > 0)
+    .map((entry) => ({
+      _id: entry._id,
+      name: entry.name || config.fallbackName,
+      date: entry.entryDate,
+      amount: Number(entry[config.field] || 0),
+      previousAmount: Number(entry.previousAmount || 0),
+      note: entry.note || '',
+    }));
+}
+
+function getMonthKey(value = new Date()) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function getDateKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 10);
+}
+
+function isCurrentWeekPaymentRow(row, weeklyStatus) {
+  if (!row || !weeklyStatus?.weekStart) return false;
+  return (
+    getDateKey(row.weekStart) === getDateKey(weeklyStatus.weekStart) &&
+    row.paymentStatus !== 'not-started' &&
+    row.paymentStatus !== 'completed' &&
+    row.schedule?.isActiveWeek !== false
+  );
+}
+
+function getCurrentWeekPaidRows(weeklyStatus) {
+  return (weeklyStatus?.clients || []).filter(
+    (row) => row.paid && isCurrentWeekPaymentRow(row, weeklyStatus)
+  );
+}
+
+function mergeReportWithCurrentWeeklyIncome(report, weeklyStatus) {
+  if (!report || !weeklyStatus || report.month !== getMonthKey(weeklyStatus.weekStart)) {
+    return report;
+  }
+
+  const paidRows = getCurrentWeekPaidRows(weeklyStatus);
+  const weeklyIncome = paidRows.reduce((sum, row) => sum + Number(row.weeklyPayment || 0), 0);
+  const summary = report.summary || {};
+  const collectionIncome = Number(summary.collectionIncome || 0);
+  const chargesIncome = Number(summary.chargesIncome || 0);
+  const paymentsOut = Number(summary.paymentsOut || 0);
+  const totalIncome = collectionIncome + chargesIncome + weeklyIncome;
+  const profit = totalIncome - paymentsOut;
+  const details = report.details || {};
+
+  return {
+    ...report,
+    summary: {
+      ...summary,
+      weeklyIncome,
+      weeklyPaymentsCount: paidRows.length,
+      totalIncome,
+      profit,
+    },
+    details: {
+      ...details,
+      weeklyIncome: paidRows.map((row) => ({
+        _id: row.paymentId || row.clientId,
+        name: row.name,
+        place: row.place || '',
+        phone: row.phone || '',
+        amount: Number(row.weeklyPayment || 0),
+        weekStart: row.weekStart,
+        paidAt: row.paidAt,
+      })),
+      monthlyProfit: buildMonthlyProfitRows({
+        ...summary,
+        weeklyIncome,
+        profit,
+      }),
+    },
+  };
+}
+
+async function downloadClientListPdf(rows, filters = {}) {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 10;
+  const generatedAt = new Date().toLocaleString('en-IN');
+  const fileDate = new Date().toISOString().slice(0, 10);
+  const reportRows = Array.isArray(rows) ? rows : [];
+  const totals = {
+    clients: reportRows.length,
+    loan: reportRows.reduce((sum, row) => sum + Number(row.amountTaken || 0), 0),
+    paid: reportRows.reduce((sum, row) => sum + Number(row.paidAmount || 0), 0),
+    pending: reportRows.reduce((sum, row) => sum + Number(row.remainingAmount || 0), 0),
+  };
+
+  const columns = [
+    { label: '#', key: 'index', width: 8 },
+    { label: 'Client', key: 'client', width: 46 },
+    { label: 'Contact', key: 'contact', width: 36 },
+    { label: 'Loan', key: 'loan', width: 38 },
+    { label: 'Paid', key: 'paid', width: 25 },
+    { label: 'Balance', key: 'balance', width: 29 },
+    { label: 'Weekly', key: 'weekly', width: 24 },
+    { label: 'Week', key: 'week', width: 39 },
+    { label: 'Status', key: 'status', width: 32 },
+  ].reduce((cols, column, index) => {
+    const previous = cols[index - 1];
+    const x = previous ? previous.x + previous.width : margin;
+    cols.push({ ...column, x });
+    return cols;
+  }, []);
+
+  const drawHeader = () => {
+    doc.setFillColor(2, 54, 31);
+    doc.rect(0, 0, pageWidth, 31, 'F');
+    doc.setFillColor(255, 212, 92);
+    doc.circle(18, 15.5, 7, 'F');
+    doc.setTextColor(2, 54, 31);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('LG', 18, 18.4, { align: 'center' });
+
+    doc.setTextColor(255, 212, 92);
+    doc.setFontSize(17);
+    doc.text(`${BRAND_NAME} Finance`, 29, 13);
+    doc.setTextColor(220, 236, 224);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Client List Report', 29, 20);
+    doc.text(`Generated: ${generatedAt}`, pageWidth - margin, 13, { align: 'right' });
+    doc.text(
+      `Search: ${pdfText(filters.search, 'All')}  |  Place: ${pdfText(filters.place, 'All')}  |  Status: ${pdfText(filters.status, 'All')}`,
+      pageWidth - margin,
+      20,
+      { align: 'right' }
+    );
+  };
+
+  const drawSummary = () => {
+    const cards = [
+      ['Clients', totals.clients],
+      ['Loan Amount', pdfMoney(totals.loan)],
+      ['Paid Amount', pdfMoney(totals.paid)],
+      ['Pending Balance', pdfMoney(totals.pending)],
+    ];
+    const cardWidth = (pageWidth - margin * 2 - 9) / 4;
+    cards.forEach(([label, value], index) => {
+      const x = margin + index * (cardWidth + 3);
+      doc.setFillColor(245, 250, 246);
+      doc.setDrawColor(214, 180, 88);
+      doc.roundedRect(x, 37, cardWidth, 18, 2, 2, 'FD');
+      doc.setTextColor(20, 83, 45);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text(String(value), x + 4, 46);
+      doc.setTextColor(91, 111, 97);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.text(label, x + 4, 51.5);
+    });
+  };
+
+  const drawTableHeader = (y) => {
+    doc.setFillColor(20, 83, 45);
+    doc.rect(margin, y, pageWidth - margin * 2, 9, 'F');
+    doc.setTextColor(255, 239, 178);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.7);
+    columns.forEach((column) => doc.text(column.label, column.x + 1.5, y + 6));
+    return y + 10;
+  };
+
+  const drawFooter = () => {
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let page = 1; page <= pageCount; page += 1) {
+      doc.setPage(page);
+      doc.setTextColor(113, 128, 116);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.text(`${BRAND_NAME} Finance - Trust, Transparency, Growth`, margin, pageHeight - 6);
+      doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 6, { align: 'right' });
+    }
+  };
+
+  drawHeader();
+  drawSummary();
+  let y = drawTableHeader(62);
+  const rowHeight = 14;
+
+  if (!reportRows.length) {
+    doc.setTextColor(31, 41, 55);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('No clients match the selected filters.', margin, y + 12);
+  }
+
+  reportRows.forEach((row, index) => {
+    if (y + rowHeight > pageHeight - 13) {
+      doc.addPage();
+      drawHeader();
+      y = drawTableHeader(39);
+    }
+
+    if (index % 2 === 0) {
+      doc.setFillColor(248, 252, 249);
+      doc.rect(margin, y - 1, pageWidth - margin * 2, rowHeight, 'F');
+    }
+
+    doc.setDrawColor(222, 232, 225);
+    doc.line(margin, y + rowHeight - 1, pageWidth - margin, y + rowHeight - 1);
+    doc.setFontSize(7.2);
+    doc.setTextColor(17, 24, 39);
+    doc.setFont('helvetica', 'bold');
+
+    drawPdfCell(doc, String(row.reportIndex || index + 1), columns[0].x + 1.5, y + 5, columns[0].width - 2);
+    drawPdfCell(doc, row.name, columns[1].x + 1.5, y + 4.6, columns[1].width - 3);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    drawPdfCell(doc, row.uniqueNo ? `No: ${row.uniqueNo}` : row.place, columns[1].x + 1.5, y + 9.6, columns[1].width - 3);
+    drawPdfCell(doc, `${row.phone || '-'} / ${row.place || '-'}`, columns[2].x + 1.5, y + 5.4, columns[2].width - 3, { lines: 2 });
+
+    doc.setTextColor(17, 24, 39);
+    doc.setFont('helvetica', 'bold');
+    drawPdfCell(doc, `Taken ${pdfMoney(row.amountTaken)}`, columns[3].x + 1.5, y + 4.6, columns[3].width - 3);
+    doc.setFont('helvetica', 'normal');
+    drawPdfCell(doc, `Total ${pdfMoney(row.totalPayable)}`, columns[3].x + 1.5, y + 9.6, columns[3].width - 3);
+    doc.setFont('helvetica', 'bold');
+    drawPdfCell(doc, pdfMoney(row.paidAmount), columns[4].x + 1.5, y + 6.5, columns[4].width - 3);
+    drawPdfCell(doc, pdfMoney(row.remainingAmount), columns[5].x + 1.5, y + 6.5, columns[5].width - 3);
+    drawPdfCell(doc, pdfMoney(row.weeklyPayment), columns[6].x + 1.5, y + 6.5, columns[6].width - 3);
+    drawPdfCell(doc, row.weekText, columns[7].x + 1.5, y + 5.1, columns[7].width - 3, { lines: 2 });
+
+    const statusColor = row.statusGroup === 'paid'
+      ? [22, 101, 52]
+      : row.statusGroup === 'not-started'
+        ? [37, 99, 235]
+        : [180, 83, 9];
+    doc.setTextColor(...statusColor);
+    drawPdfCell(doc, row.statusText, columns[8].x + 1.5, y + 6.5, columns[8].width - 3, { lines: 2 });
+    y += rowHeight;
+  });
+
+  drawFooter();
+  doc.save(`client-list-${fileDate}.pdf`);
+}
+
+function formatMonthLabel(monthStr) {
+  if (!monthStr) return new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  const [year, month] = String(monthStr).split('-').map(Number);
+  return new Date(year, (month || 1) - 1, 1).toLocaleDateString('en-IN', {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+async function downloadMonthlyProfitReportPdf(report) {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const width = doc.internal.pageSize.getWidth();
+  const height = doc.internal.pageSize.getHeight();
+  const margin = 16;
+  const summary = report?.summary || {};
+  const monthLabel = formatMonthLabel(report?.month);
+  const generatedAt = new Date().toLocaleString('en-IN');
+  const rows = [
+    ['Collection income', pdfMoney(summary.collectionIncome), `${summary.entriesCount || 0} collection entries`],
+    ['Weekly income', pdfMoney(summary.weeklyIncome), `${summary.weeklyPaymentsCount || 0} weekly payment entries only`],
+    ['Charges', pdfMoney(summary.chargesIncome), 'Collection entry charges'],
+    ['Payments out', pdfMoney(summary.paymentsOut), 'Collection entry payments'],
+    ['Total income', pdfMoney(summary.totalIncome), 'Collection + charges + weekly income'],
+    ['Monthly profit', pdfMoney(summary.profit), 'Total income - payments out'],
+  ];
+
+  doc.setFillColor(2, 54, 31);
+  doc.rect(0, 0, width, 38, 'F');
+  doc.setFillColor(255, 212, 92);
+  doc.circle(25, 19, 8, 'F');
+  doc.setTextColor(2, 54, 31);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('LG', 25, 22.2, { align: 'center' });
+
+  doc.setTextColor(255, 212, 92);
+  doc.setFontSize(18);
+  doc.text(`${BRAND_NAME} Finance`, 38, 17);
+  doc.setTextColor(220, 236, 224);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`Monthly Profit Report - ${monthLabel}`, 38, 25);
+  doc.text(`Generated: ${generatedAt}`, width - margin, 17, { align: 'right' });
+
+  const cardY = 50;
+  const cardW = (width - margin * 2 - 8) / 3;
+  [
+    ['Weekly income', pdfMoney(summary.weeklyIncome), `${summary.weeklyPaymentsCount || 0} weekly payments`],
+    ['Total income', pdfMoney(summary.totalIncome), 'Income before payments out'],
+    ['Monthly profit', pdfMoney(summary.profit), 'Final profit'],
+  ].forEach(([label, value, note], index) => {
+    const x = margin + index * (cardW + 4);
+    doc.setFillColor(index === 2 ? 255 : 246, index === 2 ? 247 : 251, index === 2 ? 223 : 247);
+    doc.setDrawColor(214, 180, 88);
+    doc.roundedRect(x, cardY, cardW, 25, 2, 2, 'FD');
+    doc.setTextColor(20, 83, 45);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text(value, x + 5, cardY + 11);
+    doc.setTextColor(88, 111, 96);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text(label, x + 5, cardY + 17);
+    doc.text(note, x + 5, cardY + 21.5);
+  });
+
+  let y = 92;
+  doc.setTextColor(20, 83, 45);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('Report Details', margin, y);
+  y += 7;
+
+  doc.setFillColor(20, 83, 45);
+  doc.rect(margin, y, width - margin * 2, 9, 'F');
+  doc.setTextColor(255, 239, 178);
+  doc.setFontSize(9);
+  doc.text('Item', margin + 4, y + 6);
+  doc.text('Amount', margin + 72, y + 6);
+  doc.text('Count / Source', margin + 122, y + 6);
+  y += 10;
+
+  rows.forEach(([label, amount, note], index) => {
+    if (index % 2 === 0) {
+      doc.setFillColor(248, 252, 249);
+      doc.rect(margin, y - 1, width - margin * 2, 11, 'F');
+    }
+    doc.setTextColor(17, 24, 39);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text(label, margin + 4, y + 6);
+    doc.text(amount, margin + 72, y + 6);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(note, margin + 122, y + 6);
+    y += 11;
+  });
+
+  doc.setDrawColor(214, 180, 88);
+  doc.line(margin, y + 8, width - margin, y + 8);
+  doc.setTextColor(20, 83, 45);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('Note: Weekly income is calculated only from paid weekly payment records.', margin, y + 18);
+
+  doc.setTextColor(113, 128, 116);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text(`${BRAND_NAME} Finance - Trust, Transparency, Growth`, margin, height - 10);
+  doc.text('Authorized Signature: N.K.V.REDDY', width - margin, height - 10, { align: 'right' });
+
+  doc.save(`monthly-profit-${report?.month || new Date().toISOString().slice(0, 7)}.pdf`);
+}
+
 function WeeklyPaymentsModule({ weekly, loading, bulkReminding, formatDate, formatMoney, togglePaid, sendReminder, sendBulkReminders, handleWhatsApp }) {
   const [activeTab, setActiveTab]   = useState('paid');
   const [search, setSearch]         = useState('');
@@ -271,10 +754,18 @@ function WeeklyPaymentsModule({ weekly, loading, bulkReminding, formatDate, form
   const [filterDate, setFilterDate]   = useState('');
 
   const allClients  = weekly?.clients || [];
-  const paidList    = useMemo(() => allClients.filter((c) => c.paid).sort((a, b) => new Date(b.paidAt) - new Date(a.paidAt)), [allClients]);
-  const pendingList = useMemo(() => allClients.filter((c) => !c.paid && c.paymentStatus !== 'not-started' && c.paymentStatus !== 'completed'), [allClients]);
+  const paidList    = useMemo(
+    () => allClients
+      .filter((c) => c.paid && isCurrentWeekPaymentRow(c, weekly))
+      .sort((a, b) => new Date(b.paidAt) - new Date(a.paidAt)),
+    [allClients, weekly]
+  );
+  const pendingList = useMemo(
+    () => allClients.filter((c) => !c.paid && isCurrentWeekPaymentRow(c, weekly)),
+    [allClients, weekly]
+  );
   const notStartedList = useMemo(() => allClients.filter((c) => c.paymentStatus === 'not-started'), [allClients]);
-  const totalActive = allClients.filter((c) => c.paymentStatus !== 'not-started' && c.paymentStatus !== 'completed').length;
+  const totalActive = allClients.filter((c) => isCurrentWeekPaymentRow(c, weekly)).length;
   const totalCollection = paidList.reduce((s, c) => s + c.weeklyPayment, 0);
   const pendingAmount   = pendingList.reduce((s, c) => s + c.weeklyPayment, 0);
   const progressPct     = totalActive > 0 ? Math.round((paidList.length / totalActive) * 100) : 0;
@@ -808,6 +1299,16 @@ function ClientListModule({
     return 'pending';
   };
 
+  const getWeekInfoText = (row) => {
+    if (!row.week) return 'Loading weekly status';
+    const rowTotalWeeks = row.week.schedule?.totalWeeks || row.totalWeeks || 25;
+    if (row.statusGroup === 'completed') return `${rowTotalWeeks} weeks completed`;
+    if (row.statusGroup === 'not-started') return `Week 1 starts ${formatDate(row.week.weekStart)}`;
+    const weekLabel = `Week ${row.week.schedule?.currentWeekNumber || 1} of ${rowTotalWeeks}`;
+    if (!row.week.dueDate) return weekLabel;
+    return `${weekLabel} - ${row.week.paid ? 'Paid' : 'Due'} ${formatDate(row.week.dueDate)}`;
+  };
+
   const renderWeekInfo = (row) => {
     if (!row.week) return <span className="muted-text">Loading weekly status</span>;
     const rowTotalWeeks = row.week.schedule?.totalWeeks || row.totalWeeks || 25;
@@ -828,6 +1329,26 @@ function ClientListModule({
     );
   };
 
+  const handleDownloadClientListPdf = async () => {
+    try {
+      await downloadClientListPdf(
+        rows.map((row, index) => ({
+          ...row,
+          reportIndex: index + 1,
+          statusText: describeStatus(row),
+          weekText: getWeekInfoText(row),
+        })),
+        {
+          search: searchClient,
+          place: placeFilter,
+          status: statusFilter === 'all' ? 'All' : statusFilter,
+        }
+      );
+    } catch (err) {
+      alert(err.message || 'Could not generate client list PDF.');
+    }
+  };
+
   if (loading && clients.length === 0) {
     return (
       <section className="section anim-tab-in client-list-page">
@@ -845,9 +1366,14 @@ function ClientListModule({
           <h2>Client List</h2>
           <p>All clients with loan details, paid amount, pending balance, and this week's status.</p>
         </div>
-        <button type="button" className="btn small primary clients-add-btn" onClick={onAddClient}>
-          + Add Client
-        </button>
+        <div className="client-list-head__actions">
+          <button type="button" className="btn small client-list-pdf-btn" onClick={handleDownloadClientListPdf}>
+            Generate PDF
+          </button>
+          <button type="button" className="btn small primary clients-add-btn" onClick={onAddClient}>
+            + Add Client
+          </button>
+        </div>
       </div>
 
       <div className="client-list-kpis">
@@ -1168,6 +1694,7 @@ export default function ManagerDashboard() {
   const [collections, setCollections] = useState([]);
   const [form, setForm] = useState(emptyClient);
   const [collectionForm, setCollectionForm] = useState(emptyCollection);
+  const [collectionAdjustments, setCollectionAdjustments] = useState(emptyCollectionAdjustments);
   const [renewalForm, setRenewalForm] = useState(emptyRenewal);
   const [renewingClient, setRenewingClient] = useState(null);
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -1187,6 +1714,7 @@ export default function ManagerDashboard() {
   const [dailyDate, setDailyDate] = useState(new Date().toISOString().slice(0, 10));
   const [monthlyReport, setMonthlyReport] = useState(null);
   const [monthlyMonth, setMonthlyMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [monthlyDetailKey, setMonthlyDetailKey] = useState('');
   const [reportLoading, setReportLoading] = useState(false);
   const [bulkReminding, setBulkReminding] = useState(false);
   const [dashboardData, setDashboardData] = useState(null);
@@ -1257,13 +1785,46 @@ export default function ManagerDashboard() {
   const loadMonthlyReport = useCallback(
     (month = monthlyMonth) => {
       setReportLoading(true);
-      return requestOnce(`monthly-profit:${month}`, async () => api.getMonthlyProfitReport(month))
-        .then(setMonthlyReport)
+      return requestOnce(`monthly-profit:${month}`, async () => {
+        const shouldUseCurrentWeekly = month === getMonthKey(new Date());
+        const [report, weeklyStatus] = await Promise.all([
+          api.getMonthlyProfitReport(month),
+          shouldUseCurrentWeekly
+            ? weekly
+              ? Promise.resolve(weekly)
+              : api.getWeeklyStatus()
+            : Promise.resolve(null),
+        ]);
+        if (weeklyStatus) setWeekly(weeklyStatus);
+        return mergeReportWithCurrentWeeklyIncome(report, weeklyStatus);
+      })
+        .then((data) => {
+          setMonthlyReport(data);
+          setMonthlyDetailKey('');
+          return data;
+        })
         .catch((e) => setMessage({ type: 'error', text: e.message }))
         .finally(() => setReportLoading(false));
     },
-    [monthlyMonth, requestOnce]
+    [monthlyMonth, requestOnce, weekly]
   );
+
+  const handleDownloadMonthlyReport = useCallback(async () => {
+    try {
+      let report = monthlyReport?.month === monthlyMonth
+        ? monthlyReport
+        : await api.getMonthlyProfitReport(monthlyMonth);
+      if (monthlyMonth === getMonthKey(new Date())) {
+        const weeklyStatus = weekly || await api.getWeeklyStatus();
+        if (!weekly) setWeekly(weeklyStatus);
+        report = mergeReportWithCurrentWeeklyIncome(report, weeklyStatus);
+      }
+      setMonthlyReport(report);
+      await downloadMonthlyProfitReportPdf(report);
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'Could not download report' });
+    }
+  }, [monthlyMonth, monthlyReport, weekly]);
 
   const loadWeekly = useCallback(
     (background = false) =>
@@ -1554,21 +2115,24 @@ export default function ManagerDashboard() {
   }, []);
 
   const handleRenewalChange = useCallback((e) => {
-    const { name, value } = e.target;
-    setRenewalForm((current) => {
-      if (name === 'amountTaken' || name === 'interestRate') {
-        const nextAmount = name === 'amountTaken' ? value : current.amountTaken;
-        const nextRate = name === 'interestRate' ? value : current.interestRate;
-        return {
-          ...current,
-          [name]: value,
-          weeklyPayment: calcRenewalWeeklyAmount(current.previousAmount, nextAmount, nextRate),
-        };
-      }
-      return { ...current, [name]: value };
-    });
-  }, []);
+  const { name, value } = e.target;
 
+  setRenewalForm((current) => {
+    const next = { ...current, [name]: value };
+
+    if (name === 'totalWeeks') {
+      next.interestRate = value === '12' ? '20' : '25';
+    }
+
+    next.weeklyPayment = calcRenewalWeeklyAmount(
+      next.previousAmount,
+      next.amountTaken,
+      next.interestRate
+    );
+
+    return next;
+  });
+}, []);
   const handleRenewClient = useCallback(
     async (e) => {
       e.preventDefault();
@@ -1638,6 +2202,33 @@ export default function ManagerDashboard() {
     setCollectionForm((current) => ({ ...current, [name]: value }));
   }, []);
 
+  const handleCollectionAdjustmentChange = useCallback((field, value) => {
+    setCollectionAdjustments((current) => ({ ...current, [field]: value }));
+  }, []);
+
+  const applyCollectionAdjustment = useCallback(
+    (field, operator) => {
+      const adjustment = Number(collectionAdjustments[field] || 0);
+      if (!Number.isFinite(adjustment) || adjustment <= 0) return;
+
+      setCollectionForm((current) => {
+        const currentAmount = Number(current[field] || 0);
+        const nextAmount =
+          operator === 'add'
+            ? currentAmount + adjustment
+            : Math.max(0, currentAmount - adjustment);
+
+        return {
+          ...current,
+          [field]: formatAmountInput(nextAmount),
+        };
+      });
+
+      setCollectionAdjustments((current) => ({ ...current, [field]: '' }));
+    },
+    [collectionAdjustments]
+  );
+
   const handleAddCollection = async (e) => {
     e.preventDefault();
     setSubmitting(true);
@@ -1645,6 +2236,7 @@ export default function ManagerDashboard() {
     try {
       await api.addCollection(collectionForm);
       setCollectionForm(emptyCollection);
+      setCollectionAdjustments(emptyCollectionAdjustments);
       setMessage({ type: 'success', text: 'Collection saved successfully' });
       loadCollections();
     } catch (err) {
@@ -1688,10 +2280,11 @@ export default function ManagerDashboard() {
     const receiptRows = [
       ['Name', row.name || 'Collection'],
       ['Date', receiptDate(row.entryDate)],
-      ['Previous Amount', money(row.previousAmount)],
-      ['Collection', money(row.collection)],
-      ['Charges', money(row.charges)],
-      ['Payments', money(row.payments)],
+      ['Previous Amount (+)', money(row.previousAmount)],
+      ['Collection (+)', money(row.collection)],
+      ['Charges (-)', money(row.charges)],
+      ['Payments (-)', money(row.payments)],
+      ['Balance', money(balance)],
     ];
     const receiptHtml = `
       <!DOCTYPE html>
@@ -1713,13 +2306,21 @@ export default function ManagerDashboard() {
             .receipt {
               position: relative;
               width: 430px;
-              min-height: 730px;
+              min-height: 780px;
               overflow: hidden;
-              padding: 24px 28px 98px;
+              padding: 24px 28px 138px;
               background: #fffefb;
               border: 2px solid #c99a46;
               border-radius: 12px;
               box-shadow: 0 16px 38px rgba(35, 24, 8, 0.16);
+            }
+            .brand,
+            .receipt-title,
+            .rows,
+            .thanks,
+            .signature {
+              position: relative;
+              z-index: 2;
             }
             .brand {
               text-align: center;
@@ -1779,31 +2380,36 @@ export default function ManagerDashboard() {
               word-break: break-word;
             }
             .thanks {
-              margin-top: 48px;
+              margin-top: 34px;
               text-align: center;
               font-size: 19px;
               font-weight: 800;
             }
             .signature {
-              width: 180px;
-              margin: 42px 8px 0 auto;
+              width: 230px;
+              margin: 24px 0 0 auto;
+              padding: 0 8px 20px;
               text-align: center;
+              overflow: visible;
             }
             .signature span {
               display: block;
-              margin-bottom: 14px;
+              margin-bottom: 10px;
               font-size: 15px;
               font-weight: 700;
             }
             .signature strong {
               display: block;
+              width: 100%;
+              padding: 4px 6px 9px;
               border-bottom: 2px solid #222;
               font-family: Georgia, 'Times New Roman', serif;
-              font-size: 27px;
+              font-size: 24px;
               font-style: italic;
-              font-weight: 500;
-              line-height: 1.1;
-              transform: rotate(-8deg);
+              font-weight: 700;
+              line-height: 1.2;
+              white-space: nowrap;
+              transform: none;
             }
             .wave-gold,
             .wave-green,
@@ -1813,6 +2419,7 @@ export default function ManagerDashboard() {
               width: calc(100% + 90px);
               border-radius: 50% 50% 0 0;
               pointer-events: none;
+              z-index: 1;
             }
             .wave-gold {
               bottom: 34px;
@@ -1838,6 +2445,7 @@ export default function ManagerDashboard() {
               .receipt {
                 width: 100%;
                 min-height: 188mm;
+                padding-bottom: 42mm;
                 box-shadow: none;
               }
             }
@@ -2055,6 +2663,177 @@ export default function ManagerDashboard() {
     renewalForm.interestRate
   );
   const topUpFirstPaymentDate = getFirstPaymentDateFromTopUp(renewalForm.dateTaken);
+  const collectionBalancePreview = calcBalance(collectionForm);
+  const syncedMonthlyReport = useMemo(
+    () => mergeReportWithCurrentWeeklyIncome(monthlyReport, weekly),
+    [monthlyReport, weekly]
+  );
+  const monthlyReportCards = useMemo(() => {
+    if (!syncedMonthlyReport) return [];
+    const summary = syncedMonthlyReport.summary || {};
+    const isCurrentMonthReport = syncedMonthlyReport.month === getMonthKey(new Date());
+    return [
+      {
+        key: 'collectionIncome',
+        label: 'Collection income',
+        value: formatMoney(summary.collectionIncome),
+        hint: `${summary.entriesCount || 0} collection entries`,
+      },
+      {
+        key: 'weeklyIncome',
+        label: 'Weekly income',
+        value: formatMoney(summary.weeklyIncome),
+        hint: isCurrentMonthReport
+          ? `${summary.weeklyPaymentsCount || 0} paid this week`
+          : `${summary.weeklyPaymentsCount || 0} weekly payment entries only`,
+      },
+      {
+        key: 'charges',
+        label: 'Charges',
+        value: formatMoney(summary.chargesIncome),
+        hint: 'From collection entries',
+      },
+      {
+        key: 'paymentsOut',
+        label: 'Payments out',
+        value: formatMoney(summary.paymentsOut),
+        hint: 'From entry payments',
+      },
+      {
+        key: 'monthlyProfit',
+        label: 'Monthly profit',
+        value: formatMoney(summary.profit),
+        hint: 'Income minus payments out',
+        highlight: true,
+      },
+    ];
+  }, [syncedMonthlyReport]);
+
+  const monthlyDetailRows = useMemo(() => {
+    if (!monthlyDetailKey || !syncedMonthlyReport) return [];
+
+    const backendRows = syncedMonthlyReport.details?.[monthlyDetailKey];
+    if (Array.isArray(backendRows) && backendRows.length > 0) return backendRows;
+
+    if (monthlyDetailKey === 'monthlyProfit') {
+      return buildMonthlyProfitRows(syncedMonthlyReport.summary);
+    }
+
+    if (MONTHLY_COLLECTION_DETAIL_CONFIG[monthlyDetailKey]) {
+      return buildCollectionDetailRows(collections, monthlyMonth, monthlyDetailKey);
+    }
+
+    return Array.isArray(backendRows) ? backendRows : [];
+  }, [collections, monthlyDetailKey, monthlyMonth, syncedMonthlyReport]);
+
+  const handleMonthlyReportCardClick = useCallback(
+    (key) => {
+      setMonthlyDetailKey((current) => (current === key ? '' : key));
+      if (MONTHLY_COLLECTION_DETAIL_CONFIG[key] && collections.length === 0) {
+        loadCollections();
+      }
+    },
+    [collections.length, loadCollections]
+  );
+
+  const renderMonthlyDetailTable = () => {
+    if (!monthlyDetailKey) return null;
+
+    if (monthlyDetailKey === 'monthlyProfit') {
+      return (
+        <div className="table-wrap monthly-detail-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Breakdown</th>
+                <th>Type</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthlyDetailRows.map((row) => (
+                <tr key={row.label}>
+                  <td>{row.label}</td>
+                  <td>
+                    <span className={`monthly-detail-type monthly-detail-type--${row.type}`}>
+                      {row.type}
+                    </span>
+                  </td>
+                  <td>{formatMoney(row.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    if (MONTHLY_COLLECTION_DETAIL_CONFIG[monthlyDetailKey] && collectionLoading) {
+      return <LoadingSpinner label="Loading details..." inline />;
+    }
+
+    if (monthlyDetailRows.length === 0) {
+      return <p className="monthly-detail-empty">No details found for this month.</p>;
+    }
+
+    if (monthlyDetailKey === 'weeklyIncome') {
+      return (
+        <div className="table-wrap monthly-detail-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Place</th>
+                <th>Phone</th>
+                <th>Week</th>
+                <th>Paid at</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthlyDetailRows.map((row) => (
+                <tr key={row._id}>
+                  <td>{row.name}</td>
+                  <td>{row.place || '-'}</td>
+                  <td>{row.phone || '-'}</td>
+                  <td>{row.weekStart ? formatDate(row.weekStart) : '-'}</td>
+                  <td>{row.paidAt ? formatDate(row.paidAt) : '-'}</td>
+                  <td>{formatMoney(row.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    return (
+      <div className="table-wrap monthly-detail-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Name</th>
+              {monthlyDetailKey === 'collectionIncome' && <th>Previous amount</th>}
+              <th>{MONTHLY_DETAIL_LABELS[monthlyDetailKey]?.replace(' details', '') || 'Amount'}</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {monthlyDetailRows.map((row) => (
+              <tr key={row._id}>
+                <td>{row.date ? formatDate(row.date) : '-'}</td>
+                <td>{row.name}</td>
+                {monthlyDetailKey === 'collectionIncome' && <td>{formatMoney(row.previousAmount)}</td>}
+                <td>{formatMoney(row.amount)}</td>
+                <td>{row.note || '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <div className={`manager-layout dash-animated ${isDashboard ? 'manager-layout--premium' : ''}${enterAnim ? ' manager-layout--enter' : ''}`}>
@@ -2274,9 +3053,6 @@ export default function ManagerDashboard() {
                 <div className="section-toolbar">
                   <div>
                     <h2>Top-up Amount - {renewingClient.name}</h2>
-                    <p className="muted-text">
-                      Previous remaining balance + top-up amount + interest = new total payable.
-                    </p>
                   </div>
                   <button
                     type="button"
@@ -2317,12 +3093,14 @@ export default function ManagerDashboard() {
                   </label>
                   <label>
                     Total weeks
-                    <input
-                      name="totalWeeks"
-                      type="number"
-                      value={renewalForm.totalWeeks}
-                      readOnly
-                    />
+                   <select
+  name="totalWeeks"
+  value={renewalForm.totalWeeks}
+  onChange={handleRenewalChange}
+>
+  <option value="12">12 Weeks</option>
+  <option value="25">25 Weeks</option>
+</select>
                   </label>
                 </div>
                 <div className="form-row">
@@ -2568,54 +3346,76 @@ export default function ManagerDashboard() {
                   required
                 />
               </label>
-              <label>
-                Previous Amount (₹)
-                <input
-                  name="previousAmount"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={collectionForm.previousAmount}
-                  onChange={handleCollectionChange}
-                  placeholder="0"
-                />
-              </label>
-              <label>
-                Collection (₹)
-                <input
-                  name="collection"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={collectionForm.collection}
-                  onChange={handleCollectionChange}
-                  placeholder="0"
-                />
-              </label>
-              <label>
-                Charges (₹)
-                <input
-                  name="charges"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={collectionForm.charges}
-                  onChange={handleCollectionChange}
-                  placeholder="0"
-                />
-              </label>
-              <label>
-                Payments (₹)
-                <input
-                  name="payments"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={collectionForm.payments}
-                  onChange={handleCollectionChange}
-                  placeholder="0"
-                />
-              </label>
+              {COLLECTION_AMOUNT_FIELDS.map((field) => (
+                <div className="collection-adjust-field" key={field.name}>
+                  <label htmlFor={`collection-${field.name}`}>
+                    {field.label} ({field.sign})
+                  </label>
+                  <input
+                    id={`collection-${field.name}`}
+                    name={field.name}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={collectionForm[field.name]}
+                    onChange={handleCollectionChange}
+                    placeholder="0"
+                  />
+                  <div className="collection-adjust-controls">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={collectionAdjustments[field.name]}
+                      onChange={(e) => handleCollectionAdjustmentChange(field.name, e.target.value)}
+                      placeholder={`${field.label} adjust`}
+                      aria-label={`${field.label} adjust amount`}
+                    />
+                    <button
+                      type="button"
+                      className="collection-adjust-btn collection-adjust-btn--add"
+                      onClick={() => applyCollectionAdjustment(field.name, 'add')}
+                      aria-label={`Add to ${field.label}`}
+                    >
+                      +
+                    </button>
+                    <button
+                      type="button"
+                      className="collection-adjust-btn collection-adjust-btn--subtract"
+                      onClick={() => applyCollectionAdjustment(field.name, 'subtract')}
+                      aria-label={`Subtract from ${field.label}`}
+                    >
+                      -
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="collection-formula-strip" aria-live="polite">
+              <span>
+                <em>Previous Amount</em>
+                <strong>{formatMoney(collectionForm.previousAmount)}</strong>
+              </span>
+              <b>+</b>
+              <span>
+                <em>Collection</em>
+                <strong>{formatMoney(collectionForm.collection)}</strong>
+              </span>
+              <b>-</b>
+              <span>
+                <em>Charges</em>
+                <strong>{formatMoney(collectionForm.charges)}</strong>
+              </span>
+              <b>-</b>
+              <span>
+                <em>Payments</em>
+                <strong>{formatMoney(collectionForm.payments)}</strong>
+              </span>
+              <b>=</b>
+              <span className="collection-formula-strip__balance">
+                <em>Balance</em>
+                <strong>{formatMoney(collectionBalancePreview)}</strong>
+              </span>
             </div>
             <button type="submit" className="btn primary" disabled={submitting}>
               {submitting ? 'Saving...' : 'Save collection'}
@@ -2631,10 +3431,10 @@ export default function ManagerDashboard() {
                   <tr>
                     <th>Name</th>
                     <th>Date</th>
-                    <th>Previous Amount</th>
-                    <th>Collection</th>
-                    <th>Charges</th>
-                    <th>Payments</th>
+                    <th>Previous Amount (+)</th>
+                    <th>Collection (+)</th>
+                    <th>Charges (-)</th>
+                    <th>Payments (-)</th>
                     <th>Balance</th>
                     <th>Actions</th>
                   </tr>
@@ -2765,32 +3565,62 @@ export default function ManagerDashboard() {
             <button type="button" className="btn small primary" onClick={() => loadMonthlyReport(monthlyMonth)}>
               Load report
             </button>
+            <button
+              type="button"
+              className="btn small monthly-report-download-btn"
+              onClick={handleDownloadMonthlyReport}
+              disabled={reportLoading}
+            >
+              Download report
+            </button>
           </div>
           {reportLoading ? (
             <LoadingSpinner label="Loading report..." inline />
           ) : monthlyReport ? (
-            <div className="card-grid">
-              <div className="info-card">
-                <span className="label">Collection income</span>
-                <span className="value">{formatMoney(monthlyReport.summary.collectionIncome)}</span>
+            <>
+              <div className="card-grid monthly-report-grid">
+                {monthlyReportCards.map((card) => (
+                  <button
+                    key={card.key}
+                    type="button"
+                    className={`info-card monthly-report-card ${card.highlight ? 'highlight' : ''} ${
+                      monthlyDetailKey === card.key ? 'monthly-report-card--active' : ''
+                    }`}
+                    onClick={() => handleMonthlyReportCardClick(card.key)}
+                  >
+                    <span className="label">{card.label}</span>
+                    <span className={`value ${card.highlight ? 'large' : ''}`}>{card.value}</span>
+                    <span className="info-card__hint">{card.hint}</span>
+                  </button>
+                ))}
               </div>
-              <div className="info-card">
-                <span className="label">Weekly income</span>
-                <span className="value">{formatMoney(monthlyReport.summary.weeklyIncome)}</span>
-              </div>
-              <div className="info-card">
-                <span className="label">Charges</span>
-                <span className="value">{formatMoney(monthlyReport.summary.chargesIncome)}</span>
-              </div>
-              <div className="info-card">
-                <span className="label">Payments out</span>
-                <span className="value">{formatMoney(monthlyReport.summary.paymentsOut)}</span>
-              </div>
-              <div className="info-card highlight">
-                <span className="label">Monthly profit</span>
-                <span className="value large">{formatMoney(monthlyReport.summary.profit)}</span>
-              </div>
-            </div>
+              {monthlyDetailKey && (
+                <div className="monthly-detail-panel anim-scale-in">
+                  <div className="monthly-detail-panel__head">
+                    <div>
+                      <h3>{MONTHLY_DETAIL_LABELS[monthlyDetailKey]}</h3>
+                      <p>
+                        {monthlyDetailKey === 'weeklyIncome'
+                          ? syncedMonthlyReport?.month === getMonthKey(new Date())
+                            ? 'This uses the same paid total shown on the Weekly Payments page.'
+                            : 'Only paid weekly payment records are listed here.'
+                          : monthlyDetailKey === 'monthlyProfit'
+                            ? 'Profit formula: collection income + weekly income + charges - payments out.'
+                            : 'Entries used for this monthly report card.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn small"
+                      onClick={() => setMonthlyDetailKey('')}
+                    >
+                      Close
+                    </button>
+                  </div>
+                  {renderMonthlyDetailTable()}
+                </div>
+              )}
+            </>
           ) : null}
         </section>
       )}

@@ -1347,13 +1347,16 @@ router.get('/reports/daily-collections', async (req, res) => {
       entryDate: { $gte: dayStart, $lte: dayEnd },
     }).sort({ createdAt: -1 }).lean();
 
-    const weeklyPaid = await WeeklyPayment.find({
+    const weeklyPaidRows = await WeeklyPayment.find({
       paid: true,
       paidAt: { $gte: dayStart, $lte: dayEnd },
     })
-      .select('client amount paidAt')
-      .populate('client', 'name place')
+      .select('client amount weekStart paid paidAt paymentStatus updatedAt createdAt')
+      .populate('client', 'name place dateTaken totalWeeks')
       .lean();
+    const weeklyPaid = consolidatePayments(weeklyPaidRows)
+      .filter((payment) => payment.paid && isScheduledPayment(payment))
+      .sort((a, b) => new Date(b.paidAt || b.updatedAt) - new Date(a.paidAt || a.updatedAt));
 
     const collectionTotal = entries.reduce((s, e) => s + Number(e.collection || 0), 0);
     const chargesTotal = entries.reduce((s, e) => s + Number(e.charges || 0), 0);
@@ -1395,10 +1398,17 @@ router.get('/reports/monthly-profit', async (req, res) => {
       entryDate: { $gte: monthStart, $lte: monthEnd },
     }).lean();
 
-    const weeklyPaid = await WeeklyPayment.find({
+    const weeklyPaidRows = await WeeklyPayment.find({
       paid: true,
       paidAt: { $gte: monthStart, $lte: monthEnd },
-    }).select('amount').lean();
+    })
+      .select('client amount weekStart paid paidAt paymentStatus updatedAt createdAt')
+      .populate('client', 'name place phone dateTaken totalWeeks')
+      .sort({ paidAt: -1 })
+      .lean();
+    const weeklyPaid = consolidatePayments(weeklyPaidRows)
+      .filter((payment) => payment.paid && isScheduledPayment(payment))
+      .sort((a, b) => new Date(b.paidAt || b.updatedAt) - new Date(a.paidAt || a.updatedAt));
 
     const collectionIncome = entries.reduce((s, e) => s + Number(e.collection || 0), 0);
     const chargesIncome = entries.reduce((s, e) => s + Number(e.charges || 0), 0);
@@ -1418,6 +1428,52 @@ router.get('/reports/monthly-profit', async (req, res) => {
         profit,
         entriesCount: entries.length,
         weeklyPaymentsCount: weeklyPaid.length,
+      },
+      details: {
+        collectionIncome: entries
+          .filter((entry) => Number(entry.collection || 0) > 0)
+          .map((entry) => ({
+            _id: entry._id,
+            name: entry.name || 'Collection entry',
+            date: entry.entryDate,
+            amount: Number(entry.collection || 0),
+            previousAmount: Number(entry.previousAmount || 0),
+            note: entry.note || '',
+          })),
+        weeklyIncome: weeklyPaid.map((payment) => ({
+          _id: payment._id,
+          name: payment.client?.name || 'Weekly payment',
+          place: payment.client?.place || '',
+          phone: payment.client?.phone || '',
+          amount: Number(payment.amount || 0),
+          weekStart: payment.weekStart,
+          paidAt: payment.paidAt,
+        })),
+        charges: entries
+          .filter((entry) => Number(entry.charges || 0) > 0)
+          .map((entry) => ({
+            _id: entry._id,
+            name: entry.name || 'Charge entry',
+            date: entry.entryDate,
+            amount: Number(entry.charges || 0),
+            note: entry.note || '',
+          })),
+        paymentsOut: entries
+          .filter((entry) => Number(entry.payments || 0) > 0)
+          .map((entry) => ({
+            _id: entry._id,
+            name: entry.name || 'Payment entry',
+            date: entry.entryDate,
+            amount: Number(entry.payments || 0),
+            note: entry.note || '',
+          })),
+        monthlyProfit: [
+          { label: 'Collection income', amount: collectionIncome, type: 'income' },
+          { label: 'Weekly income', amount: weeklyIncome, type: 'income' },
+          { label: 'Charges', amount: chargesIncome, type: 'income' },
+          { label: 'Payments out', amount: paymentsOut, type: 'expense' },
+          { label: 'Monthly profit', amount: profit, type: profit >= 0 ? 'profit' : 'loss' },
+        ],
       },
     });
   } catch (err) {

@@ -1549,6 +1549,7 @@ tbody tr:hover .badge {
     width: 100%;
     overflow-x: hidden;
   }
+  
 
   body {
     font-size: clamp(0.9rem, 3.7vw, 1rem);
