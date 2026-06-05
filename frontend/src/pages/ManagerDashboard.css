@@ -1641,43 +1641,7 @@
 
 /* Responsive */
 @media (max-width: 1200px) {
-  .mg-kpi-row {
-    grid-template-columns: repeat(3, 1fr);
-  }
   .mg-row--3 {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 900px) {
-  .manager-layout--premium .manager-main {
-    margin-left: 0;
-    padding-top: 4rem;
-  }
-  .mg-menu-btn {
-    display: flex;
-  }
-  .mg-kpi-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .mg-dash-top__search {
-    max-width: none;
-    order: 3;
-    flex: 1 1 100%;
-  }
-}
-
-@media (max-width: 500px) {
-  .mg-kpi-row {
-    grid-template-columns: 1fr;
-  }
-
-  .client-list-kpis {
-    grid-template-columns: 1fr;
-  }
-
-  .payment-plan-summary,
-  .payment-plan-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -1707,6 +1671,7 @@
     flex: 1 1 100%;
   }
 
+  /* Tablet: 2 columns for KPI */
   .mg-kpi-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1723,11 +1688,36 @@
   }
 
   .client-list-kpis {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .client-list-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .payment-plan-summary,
+  .payment-plan-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Weekly payments KPI tablet */
+  .wk2-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .manager-layout--premium .manager-main {
+    margin-left: 0;
+    padding-top: 4rem;
+  }
+  .mg-menu-btn {
+    display: flex;
+  }
+  .mg-dash-top__search {
+    max-width: none;
+    order: 3;
+    flex: 1 1 100%;
   }
 }
 
@@ -1802,7 +1792,12 @@
     min-height: 44px;
   }
 
-  .mg-kpi-row,
+  /* Mobile: 1 column for KPI */
+  .mg-kpi-row {
+    grid-template-columns: 1fr;
+    gap: 0.8rem;
+  }
+
   .mg-row,
   .mg-row--3,
   .mg-quick-grid {
@@ -2219,6 +2214,123 @@
   .manager-login-burst__logo img {
     width: 56px;
     height: 56px;
+  }
+
+  /* Mobile Table to Card Conversion */
+  .client-list-table,
+  .mg-table-responsive {
+    display: block;
+    overflow-x: visible;
+  }
+
+  .client-list-table thead,
+  .mg-table-responsive thead {
+    display: none;
+  }
+
+  .client-list-table tbody,
+  .mg-table-responsive tbody {
+    display: block;
+  }
+
+  .client-list-table tr,
+  .mg-table-responsive tr {
+    display: block;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background: linear-gradient(160deg, rgba(15,61,36,0.88), rgba(5,25,15,0.96));
+    border-radius: 12px;
+    border: 1px solid rgba(230,185,91,0.16);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  }
+
+  .client-list-table td,
+  .mg-table-responsive td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0;
+    border: none;
+    text-align: left;
+    width: 100%;
+  }
+
+  .client-list-table td::before,
+  .mg-table-responsive td::before {
+    content: attr(data-label);
+    flex: 0 0 120px;
+    color: var(--mg-muted);
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-right: 0.75rem;
+  }
+
+  .client-list-table td:first-child,
+  .mg-table-responsive td:first-child {
+    padding-top: 0;
+  }
+
+  .client-list-table td:last-child,
+  .mg-table-responsive td:last-child {
+    padding-bottom: 0;
+  }
+
+  /* Ensure all buttons are touch-friendly */
+  .mg-card-btn,
+  .mg-remind-all,
+  .mg-icon-btn,
+  .mg-menu-btn,
+  .client-list-mini-btn,
+  .action-icon-btn,
+  .wk2-btn,
+  .collection-adjust-btn,
+  .payment-plan-week__action {
+    min-height: 48px;
+    min-width: 48px;
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+  }
+
+  /* Fix horizontal scrolling */
+  .mg-dashboard,
+  .manager-layout--premium .manager-main {
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  .client-list-table table {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Weekly payments KPI mobile */
+  .wk2-kpi-row {
+    grid-template-columns: 1fr;
+  }
+
+  .wk2-kpi {
+    padding: 0.9rem;
+  }
+
+  .wk2-kpi strong {
+    font-size: 1.2rem;
+  }
+
+  .wk2-page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .wk2-header-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .wk2-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 
@@ -2653,31 +2765,237 @@
   .wk2-btn { padding: 0.45rem 0.65rem; font-size: 0.76rem; }
 }
 
-/* ── Defaulters grouped weeks ── */
-.defaulter-weeks-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+/* ── Defaulters module ── */
+.defaulters-page {
+  padding-bottom: 2rem;
 }
 
-.defaulter-week-chip {
+.defaulters-header h2 {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
   flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
 }
 
-.defaulter-week-chip__label {
-  font-size: 0.8rem;
+.defaulters-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.defaulters-live-badge--hot {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.28);
+}
+
+.defaulters-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.defaulters-live-badge--hot .defaulters-live-dot {
+  animation: defaulters-live-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes defaulters-live-pulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.defaulters-count-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.65rem;
+  height: 1.65rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #0b2f1d;
+  background: linear-gradient(135deg, #e6b95b, #f5d78e);
+}
+
+.defaulters-empty {
+  padding: 2.5rem;
+  text-align: center;
+  color: #4ade80;
+  font-size: 0.95rem;
+}
+
+.defaulters-table-wrap {
+  margin-top: 1rem;
+}
+
+.defaulters-summary-table td,
+.defaulters-summary-table th {
+  vertical-align: middle;
+}
+
+.defaulter-row--overdue td {
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.defaulter-row--current td {
+  background: rgba(245, 158, 11, 0.04);
+}
+
+.defaulter-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  overflow: hidden;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #f8faf9;
+  background: linear-gradient(135deg, #14532d, #166534);
+  border: 1px solid rgba(230, 185, 91, 0.22);
+}
+
+.defaulter-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.defaulters-total-due {
+  color: #fbbf24;
+  font-size: 1rem;
+}
+
+.defaulters-weeks-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #e6b95b;
+  background: rgba(230, 185, 91, 0.12);
+  border: 1px solid rgba(230, 185, 91, 0.24);
+}
+
+.defaulters-view-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.defaulters-view-btn__icon {
+  font-size: 0.62rem;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+.defaulter-overdue-tag,
+.defaulter-pending-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.defaulter-overdue-tag {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+}
+
+.defaulter-pending-tag {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+}
+
+.defaulter-detail-modal {
+  display: flex;
+  flex-direction: column;
+}
+
+.defaulter-detail-modal__header {
+  align-items: flex-start;
+}
+
+.defaulter-detail-modal__intro {
+  padding-top: 0.15rem;
+  padding-right: 0.5rem;
+}
+
+.defaulter-detail-modal__eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--mg-muted, #94a3b8);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.defaulter-detail-modal__header h2 {
+  margin: 0;
+  color: #f8faf9;
+  font-size: 1.2rem;
+}
+
+.defaulter-detail-modal__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 1rem;
+  margin-top: 0.65rem;
+}
+
+.defaulter-detail-modal__meta span {
+  color: #c4dcc9;
+  font-size: 0.84rem;
   font-weight: 700;
-  color: #e8f8ea;
-  white-space: nowrap;
 }
 
-.defaulter-week-chip__date {
-  font-size: 0.7rem;
-  color: var(--mg-muted);
-  white-space: nowrap;
+.defaulter-detail-modal__body {
+  padding-top: 0.85rem;
+}
+
+.defaulter-detail-weeks-table {
+  margin-top: 0;
+}
+
+.defaulter-week-row--overdue td {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.defaulter-detail-modal__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  flex: 0 0 auto;
+  padding: 1rem 1.35rem 1.2rem;
+  border-top: 1px solid rgba(230, 185, 91, 0.18);
+  background: rgba(6, 44, 26, 0.96);
+}
+
+.defaulter-detail-modal__footer .btn {
+  flex: 1 1 auto;
+  min-width: 8.5rem;
 }
 
 /* ── Starting Next Week panel ── */
@@ -2762,4 +3080,304 @@
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+}
+/* Monthly Profit Dashboard */
+
+.monthly-profit-page {
+  padding-bottom: 2rem;
+}
+
+.monthly-profit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.monthly-profit-header h2 {
+  margin: 0;
+  color: #e8f8ea;
+}
+
+.monthly-profit-header p {
+  margin: 0.35rem 0 0;
+  color: #94a3b8;
+}
+
+.monthly-profit-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.monthly-simple-cards {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.monthly-simple-card {
+  display: block;
+  width: 100%;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  background: linear-gradient(180deg,#0f3d24,#0b2f1d);
+  border: 1px solid rgba(230,185,91,0.15);
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.monthly-simple-card:hover {
+  border-color: rgba(230,185,91,0.32);
+  box-shadow: 0 14px 30px rgba(0,0,0,0.28);
+}
+
+.monthly-simple-card:focus-visible {
+  outline: 2px solid rgba(230,185,91,0.55);
+  outline-offset: 2px;
+}
+
+.monthly-simple-card--active {
+  border-color: rgba(230,185,91,0.42);
+  box-shadow: 0 0 0 1px rgba(230,185,91,0.2), 0 14px 30px rgba(0,0,0,0.3);
+}
+
+.monthly-simple-card span {
+  display: block;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  margin-bottom: 0.4rem;
+}
+
+.monthly-simple-card strong {
+  color: #fff;
+  font-size: 1.4rem;
+}
+
+.monthly-simple-card--red {
+  border-color: rgba(239,68,68,0.25);
+}
+
+.monthly-simple-card--red strong {
+  color: #f87171;
+}
+
+.monthly-simple-card--profit {
+  border-color: rgba(34,197,94,0.3);
+}
+
+.monthly-simple-card--profit strong {
+  color: #4ade80;
+  font-size: 1.6rem;
+}
+
+@keyframes monthly-detail-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes monthly-detail-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.monthly-detail-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  z-index: 9999;
+  animation: monthly-detail-overlay-in 0.24s ease-out;
+}
+
+.monthly-detail-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 95vw);
+  max-height: 80vh;
+  margin: auto;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(230, 185, 91, 0.28);
+  background:
+    radial-gradient(circle at 85% 12%, rgba(230, 185, 91, 0.14), transparent 34%),
+    linear-gradient(160deg, rgba(8, 47, 28, 0.98), rgba(3, 18, 11, 0.98));
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.48);
+  animation: monthly-detail-modal-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.monthly-detail-modal__header {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 1.35rem 4.75rem 1.1rem 1.35rem;
+  border-bottom: 1px solid rgba(230, 185, 91, 0.18);
+  background: rgba(6, 44, 26, 0.96);
+}
+
+.monthly-detail-modal__header h2 {
+  margin: 0.35rem 0 0;
+  padding-top: 0.15rem;
+  color: var(--mg-gold, #e6b95b);
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.monthly-detail-modal__close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(230, 185, 91, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #f8faf9;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.monthly-detail-modal__close:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.monthly-detail-modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.1rem 1.35rem 1.35rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.monthly-detail-modal__body .monthly-detail-table {
+  margin-top: 0;
+}
+
+.monthly-detail-modal__body .table-wrap {
+  overflow-x: auto;
+}
+
+.monthly-empty {
+  text-align: center;
+  padding: 3rem;
+  border-radius: 16px;
+  background: rgba(15,61,36,0.7);
+  color: #94a3b8;
+}
+
+/* Mobile */
+
+@media (max-width: 992px) {
+  .monthly-simple-cards {
+    grid-template-columns: repeat(2,1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .monthly-simple-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-profit-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .monthly-profit-actions {
+    width: 100%;
+  }
+
+  .monthly-profit-actions .btn,
+  .monthly-profit-actions .search-input {
+    width: 100%;
+  }
+
+  .monthly-simple-card strong {
+    font-size: 1.2rem;
+  }
+
+  .monthly-detail-overlay {
+    padding: 12px;
+  }
+
+  .monthly-detail-modal {
+    width: min(1100px, 100%);
+    max-height: 80vh;
+    border-radius: 16px;
+  }
+
+  .monthly-detail-modal__header {
+    padding: 1.1rem 3.75rem 0.95rem 1rem;
+  }
+
+  .monthly-detail-modal__header h2 {
+    margin-top: 0.25rem;
+    font-size: 1rem;
+  }
+
+  .monthly-detail-modal__close {
+    top: 0.75rem;
+    right: 0.75rem;
+    width: 38px;
+    height: 38px;
+  }
+
+  .monthly-detail-modal__body {
+    padding: 0.9rem 1rem 1rem;
+  }
+
+  .defaulters-summary-table th:nth-child(3),
+  .defaulters-summary-table td:nth-child(3),
+  .defaulters-summary-table th:nth-child(4),
+  .defaulters-summary-table td:nth-child(4) {
+    white-space: nowrap;
+  }
+
+  .defaulters-view-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .defaulter-detail-modal__meta {
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .defaulter-detail-modal__footer {
+    flex-direction: column;
+    padding: 0.9rem 1rem 1rem;
+  }
+
+  .defaulter-detail-modal__footer .btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .defaulter-detail-weeks-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }

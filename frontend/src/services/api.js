@@ -5,20 +5,41 @@ function getToken() {
 }
 
 async function request(url, options = {}) {
-  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  const { headers: customHeaders, timeoutMs = 0, ...fetchOptions } = options;
+  const headers = { 'Content-Type': 'application/json', ...customHeaders };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let res;
+  const controller = timeoutMs ? new AbortController() : null;
+  const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
   try {
-    res = await fetch(`${API}${url}`, { ...options, headers });
-  } catch {
+    res = await fetch(`${API}${url}`, {
+      ...fetchOptions,
+      headers,
+      signal: fetchOptions.signal || controller?.signal,
+    });
+  } catch (err) {
+    if (timeout) clearTimeout(timeout);
+    if (err.name === 'AbortError') {
+      throw new Error('Server is taking too long. Please try again.');
+    }
     throw new Error(
       'Cannot reach server. Start the backend: cd backend → npm run dev (port 5000).'
     );
   }
 
-  const data = await res.json().catch(() => ({}));
+  let data;
+  try {
+    data = await res.json();
+  } catch (err) {
+    if (timeout) clearTimeout(timeout);
+    if (err.name === 'AbortError') {
+      throw new Error('Server is taking too long. Please try again.');
+    }
+    data = {};
+  }
+  if (timeout) clearTimeout(timeout);
   if (!res.ok) {
     if (res.status === 502 || res.status === 503) {
       throw new Error(
@@ -76,7 +97,7 @@ export const api = {
     }),
   deleteClient: (id) => request(`/manager/clients/${id}`, { method: 'DELETE' }),
   getManagerDashboard: () => request('/manager/dashboard'),
-  getWeeklyStatus: () => request('/manager/weekly-status'),
+  getWeeklyStatus: () => request('/manager/weekly-status', { timeoutMs: 12000 }),
   getPaymentApprovals: () => request('/manager/payment-approvals'),
   reviewPaymentApproval: (paymentId, action, managerNote = '') =>
     request(`/manager/payment-approvals/${paymentId}`, {

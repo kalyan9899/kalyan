@@ -815,7 +815,9 @@ router.get('/weekly-status', async (req, res) => {
     const weekStart = getWeekStart();
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
-    const clients = await Client.find().select('-password').lean();
+    const clients = await Client.find()
+      .select('name place phone weeklyPayment dateTaken totalWeeks')
+      .lean();
     const scheduleByClient = await ensureScheduledPaymentsForClients(clients, weekStart);
     const currentPayments = consolidatePayments(
       await WeeklyPayment.find({

@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { id: 'collection', label: 'Collection', icon: 'rupee' },
   { id: 'defaulters', label: 'Defaulters', icon: 'alert', badge: true },
   { id: 'monthly-profit', label: 'Reports', icon: 'chart' },
-  { id: 'weekly', label: 'Reminders', icon: 'bell', navKey: 'reminders' },
+  { id: 'reminders', label: 'Reminders', icon: 'bell' },
 ];
 
 const ICONS = {
@@ -77,13 +77,10 @@ export default function ManagerSidebar({
   onCloseMobile,
   defaulterCount = 0,
 }) {
-  const isActive = (item) => {
-    if (item.navKey === 'reminders') return active === 'weekly';
-    return active === item.id;
-  };
+  const isActive = (item) => active === item.id;
 
   const handleNav = (item) => {
-    onNavigate(item.id === 'weekly' && item.navKey === 'reminders' ? 'weekly' : item.id);
+    onNavigate(item.id);
     onCloseMobile?.();
   };
 
@@ -116,10 +113,12 @@ export default function ManagerSidebar({
 
         <nav className="manager-sidebar__nav">
           {NAV_ITEMS.map((item) => (
-            <button
+            <a
               key={`${item.id}-${item.label}`}
-              type="button"
+              href={`#${item.id}`}
+              data-nav-id={item.id}
               className={`manager-sidebar__btn ${isActive(item) ? 'active' : ''}`}
+              aria-current={isActive(item) ? 'page' : undefined}
               onClick={() => handleNav(item)}
             >
               <span className="manager-sidebar__icon">{ICONS[item.icon]}</span>
@@ -127,7 +126,7 @@ export default function ManagerSidebar({
               {item.badge && defaulterCount > 0 && (
                 <span className="sidebar-badge">{defaulterCount}</span>
               )}
-            </button>
+            </a>
           ))}
         </nav>
 

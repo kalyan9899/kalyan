@@ -11,6 +11,33 @@ import './ManagerDashboard.css';
 const DashboardBg = lazy(() => import('../components/DashboardBg'));
 const ManagerDashboardHome = lazy(() => import('./ManagerDashboardHome'));
 
+const MANAGER_TAB_IDS = new Set([
+  'dashboard',
+  'client-list',
+  'weekly',
+  'payment-approvals',
+  'clients',
+  'collection',
+  'defaulters',
+  'monthly-profit',
+  'reminders',
+  'add',
+  'daily-report',
+]);
+
+function getManagerTabFromHash() {
+  if (typeof window === 'undefined') return 'dashboard';
+  const tabId = window.location.hash.replace('#', '').trim();
+  return MANAGER_TAB_IDS.has(tabId) ? tabId : 'dashboard';
+}
+
+function syncManagerHash(nextTab) {
+  if (typeof window === 'undefined' || !MANAGER_TAB_IDS.has(nextTab)) return;
+  const nextHash = `#${nextTab}`;
+  if (window.location.hash === nextHash) return;
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
+}
+
 const emptyClient = {
   uniqueNo: '',
   name: '',
@@ -110,6 +137,13 @@ function formatDate(d) {
 
 function formatMoney(n) {
   return `₹${Number(n || 0).toLocaleString('en-IN')}`;
+}
+
+function createEmptyWeeklyStatus() {
+  const weekStart = new Date();
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  return { weekStart: weekStart.toISOString(), clients: [] };
 }
 
 function calcBalance(row) {
@@ -351,6 +385,31 @@ const MONTHLY_COLLECTION_DETAIL_CONFIG = {
     fallbackName: 'Payment entry',
   },
 };
+
+function getDefaulterDaysLate(week) {
+  const days = Number(week?.daysUntilDue);
+  return Number.isFinite(days) && days < 0 ? Math.abs(days) : 0;
+}
+
+function groupDefaultersByClient(defaulters) {
+  const grouped = [];
+  const seen = new Map();
+  defaulters.forEach((d) => {
+    const key = String(d.clientId);
+    if (!seen.has(key)) {
+      seen.set(key, grouped.length);
+      grouped.push({ ...d, pendingWeeks: [d] });
+    } else {
+      grouped[seen.get(key)].pendingWeeks.push(d);
+    }
+  });
+  grouped.forEach((entry) => {
+    entry.pendingWeeks.sort(
+      (a, b) => new Date(a.weekStart).getTime() - new Date(b.weekStart).getTime()
+    );
+  });
+  return grouped;
+}
 
 function isInReportMonth(value, monthValue) {
   if (!value || !monthValue) return false;
@@ -752,20 +811,32 @@ function WeeklyPaymentsModule({ weekly, loading, bulkReminding, formatDate, form
   const [search, setSearch]         = useState('');
   const [filterPlace, setFilterPlace] = useState('');
   const [filterDate, setFilterDate]   = useState('');
+  const [loaderExpired, setLoaderExpired] = useState(false);
 
-  const allClients  = weekly?.clients || [];
+  useEffect(() => {
+    if (!loading) {
+      setLoaderExpired(false);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setLoaderExpired(true), 12000);
+    return () => window.clearTimeout(timer);
+  }, [loading]);
+
+  const weeklyData = weekly || createEmptyWeeklyStatus();
+  const isLoading = loading && !loaderExpired;
+  const allClients  = weeklyData?.clients || [];
   const paidList    = useMemo(
     () => allClients
-      .filter((c) => c.paid && isCurrentWeekPaymentRow(c, weekly))
+      .filter((c) => c.paid && isCurrentWeekPaymentRow(c, weeklyData))
       .sort((a, b) => new Date(b.paidAt) - new Date(a.paidAt)),
-    [allClients, weekly]
+    [allClients, weeklyData]
   );
   const pendingList = useMemo(
-    () => allClients.filter((c) => !c.paid && isCurrentWeekPaymentRow(c, weekly)),
-    [allClients, weekly]
+    () => allClients.filter((c) => !c.paid && isCurrentWeekPaymentRow(c, weeklyData)),
+    [allClients, weeklyData]
   );
   const notStartedList = useMemo(() => allClients.filter((c) => c.paymentStatus === 'not-started'), [allClients]);
-  const totalActive = allClients.filter((c) => isCurrentWeekPaymentRow(c, weekly)).length;
+  const totalActive = allClients.filter((c) => isCurrentWeekPaymentRow(c, weeklyData)).length;
   const totalCollection = paidList.reduce((s, c) => s + c.weeklyPayment, 0);
   const pendingAmount   = pendingList.reduce((s, c) => s + c.weeklyPayment, 0);
   const progressPct     = totalActive > 0 ? Math.round((paidList.length / totalActive) * 100) : 0;
@@ -785,9 +856,9 @@ function WeeklyPaymentsModule({ weekly, loading, bulkReminding, formatDate, form
 
   const filteredPaid    = applyFilter(paidList);
   const filteredPending = applyFilter(pendingList);
-  const weekLabel = weekly?.weekStart ? formatDate(weekly.weekStart) : '';
+  const weekLabel = weeklyData?.weekStart ? formatDate(weeklyData.weekStart) : '';
 
-  if (loading) {
+  if (isLoading) {
     return (
       <section className="section anim-tab-in">
         <div className="wk2-skeleton-header" />
@@ -799,6 +870,11 @@ function WeeklyPaymentsModule({ weekly, loading, bulkReminding, formatDate, form
 
   return (
     <section key="weekly-tab" className="section anim-tab-in wk2-wrap">
+      {loaderExpired && loading && (
+        <div className="alert error">
+          Weekly payments are taking too long to load. Showing the weekly page now; try again to refresh live data.
+        </div>
+      )}
 
       {/* ── Page header ── */}
       <div className="wk2-page-header">
@@ -1688,7 +1764,7 @@ function ClientPaymentPlanModal({
 
 export default function ManagerDashboard() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState('dashboard');
+  const [tab, setTab] = useState(() => getManagerTabFromHash());
   const [clients, setClients] = useState([]);
   const [weekly, setWeekly] = useState(null);
   const [collections, setCollections] = useState([]);
@@ -1698,7 +1774,8 @@ export default function ManagerDashboard() {
   const [renewalForm, setRenewalForm] = useState(emptyRenewal);
   const [renewingClient, setRenewingClient] = useState(null);
   const [message, setMessage] = useState({ type: '', text: '' });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
   const [collectionLoading, setCollectionLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1709,6 +1786,8 @@ export default function ManagerDashboard() {
   const [editClientId, setEditClientId] = useState(null);
   const [defaulters, setDefaulters] = useState([]);
   const [defaulterCount, setDefaulterCount] = useState(0);
+  const [defaulterDetailId, setDefaulterDetailId] = useState('');
+  const [defaulterActionLoading, setDefaulterActionLoading] = useState(false);
   const [dailyReport, setDailyReport] = useState(null);
   const pendingRequestsRef = useRef({});
   const [dailyDate, setDailyDate] = useState(new Date().toISOString().slice(0, 10));
@@ -1736,6 +1815,17 @@ export default function ManagerDashboard() {
     const t = setTimeout(() => setEnterAnim(false), 2600);
     return () => clearTimeout(t);
   }, [dashboardLoading, enterAnim]);
+
+  useEffect(() => {
+    const syncFromHash = () => {
+      setSidebarOpen(false);
+      setTab(getManagerTabFromHash());
+    };
+
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, []);
 
   const requestOnce = useCallback(async (key, fn) => {
     if (pendingRequestsRef.current[key]) return pendingRequestsRef.current[key];
@@ -1826,21 +1916,18 @@ export default function ManagerDashboard() {
     }
   }, [monthlyMonth, monthlyReport, weekly]);
 
-  const loadWeekly = useCallback(
-    (background = false) =>
-      requestOnce('weekly', async () => {
-        if (!background) setLoading(true);
-        const data = await api.getWeeklyStatus();
-        setWeekly(data);
-        setMessage((current) => (current.type === 'error' ? { type: '', text: '' } : current));
-        return data;
-      })
-        .catch((e) => setMessage({ type: 'error', text: e.message }))
-        .finally(() => {
-          if (!background) setLoading(false);
-        }),
-    [requestOnce]
-  );
+ const loadWeekly = useCallback(async (background = false) => {
+  try {
+    if (!background) setLoading(true);
+
+    const data = await api.getWeeklyStatus();
+    setWeekly(data);
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    if (!background) setLoading(false);
+  }
+}, []);
 
   const loadPaymentApprovals = useCallback(
     (background = false) =>
@@ -1911,9 +1998,9 @@ export default function ManagerDashboard() {
   }, [loadDashboard]);
 
   useEffect(() => {
-    if (tab === 'client-list') {
+    if (tab === 'client-list' || tab === 'reminders') {
       loadClients(globalSearch.trim());
-      loadWeekly();
+      loadWeekly(true);
     }
     if (tab === 'clients') loadClients(globalSearch.trim());
     if (tab === 'weekly') loadWeekly();
@@ -1931,7 +2018,7 @@ export default function ManagerDashboard() {
       if (tab === 'dashboard') loadDashboard({ background: true });
       if (tab === 'weekly') loadWeekly(true);
       if (tab === 'payment-approvals') loadPaymentApprovals(true);
-      if (tab === 'client-list') {
+      if (tab === 'client-list' || tab === 'reminders') {
         loadClients(globalSearch.trim());
         loadWeekly(true);
       }
@@ -2036,6 +2123,7 @@ export default function ManagerDashboard() {
         setEditClientId(null);
         loadClients();
         loadWeekly();
+        syncManagerHash('clients');
         setTab('clients');
       } catch (err) {
         setMessage({ type: 'error', text: err.message });
@@ -2062,6 +2150,7 @@ export default function ManagerDashboard() {
     });
     setEditClientId(client._id);
     setMessage({ type: 'info', text: `Editing ${client.name}. Update the fields and save.` });
+    syncManagerHash('add');
     setTab('add');
   }, []);
 
@@ -2094,6 +2183,7 @@ export default function ManagerDashboard() {
     setForm(emptyClient);
     setEditClientId(null);
     setMessage({ type: '', text: '' });
+    syncManagerHash('add');
     setTab('add');
   }, []);
 
@@ -2171,11 +2261,13 @@ export default function ManagerDashboard() {
       try {
         await api.updatePayment(paymentId, !currentPaid);
         loadWeekly();
+        loadDefaulters();
+        loadDashboard();
       } catch (err) {
         setMessage({ type: 'error', text: err.message });
       }
     },
-    [loadWeekly]
+    [loadWeekly, loadDefaulters, loadDashboard]
   );
 
   const handleReviewPayment = useCallback(
@@ -2621,13 +2713,95 @@ export default function ManagerDashboard() {
     openWhatsApp(phone, message);
   }, []);
 
+  const groupedDefaulters = useMemo(() => groupDefaultersByClient(defaulters), [defaulters]);
+
+  const selectedDefaulter = useMemo(
+    () => groupedDefaulters.find((g) => String(g.clientId) === String(defaulterDetailId)) || null,
+    [groupedDefaulters, defaulterDetailId]
+  );
+
+  const closeDefaulterDetail = useCallback(() => {
+    setDefaulterDetailId('');
+  }, []);
+
+  const handleDefaulterSendReminders = useCallback(async () => {
+    if (!selectedDefaulter) return;
+    setDefaulterActionLoading(true);
+    try {
+      for (const week of selectedDefaulter.pendingWeeks) {
+        await api.sendReminder(week.paymentId);
+      }
+      setMessage({
+        type: 'success',
+        text: `Reminders sent for ${selectedDefaulter.pendingWeeks.length} pending week(s).`,
+      });
+      loadWeekly();
+      loadDefaulters();
+      loadDashboard();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setDefaulterActionLoading(false);
+    }
+  }, [selectedDefaulter, loadWeekly, loadDefaulters, loadDashboard]);
+
+  const handleDefaulterWhatsApp = useCallback(() => {
+    if (!selectedDefaulter) return;
+    const lastWeek = selectedDefaulter.pendingWeeks[selectedDefaulter.pendingWeeks.length - 1];
+    handleWhatsApp(selectedDefaulter.phone, lastWeek?.reminderMessage);
+  }, [selectedDefaulter, handleWhatsApp]);
+
+  const handleDefaulterMarkAllPaid = useCallback(async () => {
+    if (!selectedDefaulter) return;
+    const count = selectedDefaulter.pendingWeeks.length;
+    if (!window.confirm(`Mark all ${count} pending week(s) as paid for ${selectedDefaulter.name}?`)) {
+      return;
+    }
+    setDefaulterActionLoading(true);
+    try {
+      for (const week of selectedDefaulter.pendingWeeks) {
+        await api.updatePayment(week.paymentId, true);
+      }
+      setMessage({ type: 'success', text: `${count} week(s) marked as paid.` });
+      closeDefaulterDetail();
+      loadWeekly();
+      loadDefaulters();
+      loadDashboard();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setDefaulterActionLoading(false);
+    }
+  }, [selectedDefaulter, closeDefaulterDetail, loadWeekly, loadDefaulters, loadDashboard]);
+
   const handleGlobalSearch = useCallback(
     (value) => {
       setGlobalSearch(value);
       setSearchClient(value);
-      if (value.trim()) setTab('clients');
+      if (value.trim()) {
+        syncManagerHash('clients');
+        setTab('clients');
+      }
     },
     []
+  );
+
+  const handleNavigate = useCallback(
+    (nextTab) => {
+      if (!MANAGER_TAB_IDS.has(nextTab)) return;
+      setMonthlyDetailKey('');
+      setDefaulterDetailId('');
+      setPlanClient(null);
+      setPlanData(null);
+      setRenewingClient(null);
+      setSidebarOpen(false);
+      syncManagerHash(nextTab);
+      setTab(nextTab);
+      if (nextTab === 'weekly') {
+        loadWeekly();
+      }
+    },
+    [loadWeekly]
   );
 
   const handleSidebarToggle = useCallback(() => {
@@ -2639,6 +2813,7 @@ export default function ManagerDashboard() {
       dashboard: 'Dashboard',
       'client-list': 'Client List',
       weekly: 'Weekly payments',
+      reminders: 'Reminders',
       clients: 'Clients',
       collection: 'Collection',
       'payment-approvals': 'Payment approvals',
@@ -2728,13 +2903,17 @@ export default function ManagerDashboard() {
 
   const handleMonthlyReportCardClick = useCallback(
     (key) => {
-      setMonthlyDetailKey((current) => (current === key ? '' : key));
+      setMonthlyDetailKey(key);
       if (MONTHLY_COLLECTION_DETAIL_CONFIG[key] && collections.length === 0) {
         loadCollections();
       }
     },
     [collections.length, loadCollections]
   );
+
+  const closeMonthlyDetailModal = useCallback(() => {
+    setMonthlyDetailKey('');
+  }, []);
 
   const renderMonthlyDetailTable = () => {
     if (!monthlyDetailKey) return null;
@@ -2854,7 +3033,7 @@ export default function ManagerDashboard() {
       )}
       <ManagerSidebar
         active={tab}
-        onNavigate={setTab}
+        onNavigate={handleNavigate}
         onLogout={logout}
         mobileOpen={sidebarOpen}
         onMenuToggle={handleSidebarToggle}
@@ -2909,7 +3088,7 @@ export default function ManagerDashboard() {
               onSearchChange={handleGlobalSearch}
               onRemindAll={sendBulkReminders}
               bulkReminding={bulkReminding}
-              onNavigate={setTab}
+              onNavigate={handleNavigate}
               onRemind={sendReminder}
               onWhatsApp={handleWhatsApp}
               notificationCount={defaulterCount}
@@ -2922,12 +3101,35 @@ export default function ManagerDashboard() {
           <ClientListModule
             clients={clients}
             weekly={weekly}
-            loading={loading}
+            loading={loading && clients.length === 0}
             searchClient={searchClient}
             onSearchChange={handleSearchChange}
             placeFilter={clientListPlace}
             onPlaceFilterChange={setClientListPlace}
             statusFilter={clientListStatus}
+            onStatusFilterChange={setClientListStatus}
+            onResetFilters={handleResetClientListFilters}
+            onAddClient={handleOpenAddClient}
+            formatDate={formatDate}
+            formatMoney={formatMoney}
+            togglePaid={togglePaid}
+            sendReminder={sendReminder}
+            handleWhatsApp={handleWhatsApp}
+            startRenewal={startRenewal}
+            onViewPlan={handleViewPaymentPlan}
+          />
+        )}
+
+        {tab === 'reminders' && (
+          <ClientListModule
+            clients={clients}
+            weekly={weekly}
+            loading={loading && clients.length === 0}
+            searchClient={searchClient}
+            onSearchChange={handleSearchChange}
+            placeFilter={clientListPlace}
+            onPlaceFilterChange={setClientListPlace}
+            statusFilter="pending"
             onStatusFilterChange={setClientListStatus}
             onResetFilters={handleResetClientListFilters}
             onAddClient={handleOpenAddClient}
@@ -3552,82 +3754,135 @@ export default function ManagerDashboard() {
         </section>
       )}
 
-      {tab === 'monthly-profit' && (
-        <section key="monthly-profit-tab" className="section anim-tab-in">
-          <div className="section-toolbar">
-            <h2>Monthly profit report</h2>
-            <input
-              type="month"
-              value={monthlyMonth}
-              onChange={(e) => setMonthlyMonth(e.target.value)}
-              className="search-input"
-            />
-            <button type="button" className="btn small primary" onClick={() => loadMonthlyReport(monthlyMonth)}>
-              Load report
-            </button>
-            <button
-              type="button"
-              className="btn small monthly-report-download-btn"
-              onClick={handleDownloadMonthlyReport}
-              disabled={reportLoading}
-            >
-              Download report
-            </button>
-          </div>
-          {reportLoading ? (
-            <LoadingSpinner label="Loading report..." inline />
-          ) : monthlyReport ? (
-            <>
-              <div className="card-grid monthly-report-grid">
-                {monthlyReportCards.map((card) => (
-                  <button
-                    key={card.key}
-                    type="button"
-                    className={`info-card monthly-report-card ${card.highlight ? 'highlight' : ''} ${
-                      monthlyDetailKey === card.key ? 'monthly-report-card--active' : ''
-                    }`}
-                    onClick={() => handleMonthlyReportCardClick(card.key)}
-                  >
-                    <span className="label">{card.label}</span>
-                    <span className={`value ${card.highlight ? 'large' : ''}`}>{card.value}</span>
-                    <span className="info-card__hint">{card.hint}</span>
-                  </button>
-                ))}
-              </div>
-              {monthlyDetailKey && (
-                <div className="monthly-detail-panel anim-scale-in">
-                  <div className="monthly-detail-panel__head">
-                    <div>
-                      <h3>{MONTHLY_DETAIL_LABELS[monthlyDetailKey]}</h3>
-                      <p>
-                        {monthlyDetailKey === 'weeklyIncome'
-                          ? syncedMonthlyReport?.month === getMonthKey(new Date())
-                            ? 'This uses the same paid total shown on the Weekly Payments page.'
-                            : 'Only paid weekly payment records are listed here.'
-                          : monthlyDetailKey === 'monthlyProfit'
-                            ? 'Profit formula: collection income + weekly income + charges - payments out.'
-                            : 'Entries used for this monthly report card.'}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => setMonthlyDetailKey('')}
-                    >
-                      Close
-                    </button>
-                  </div>
-                  {renderMonthlyDetailTable()}
-                </div>
-              )}
-            </>
-          ) : null}
-        </section>
-      )}
+     {tab === 'monthly-profit' && (
+  <>
+  <section key="monthly-profit-tab" className="section anim-tab-in monthly-profit-page">
+    <div className="monthly-profit-header">
+      <div>
+        <h2>Monthly Profit Dashboard</h2>
+        <p>Income, expense and profit summary.</p>
+      </div>
 
+      <div className="monthly-profit-actions">
+        <input
+          type="month"
+          value={monthlyMonth}
+          onChange={(e) => setMonthlyMonth(e.target.value)}
+          className="search-input"
+        />
+
+        <button
+          type="button"
+          className="btn small primary"
+          onClick={() => loadMonthlyReport(monthlyMonth)}
+        >
+          Load Report
+        </button>
+
+        <button
+          type="button"
+          className="btn small monthly-report-download-btn"
+          onClick={handleDownloadMonthlyReport}
+          disabled={reportLoading}
+        >
+          Download PDF
+        </button>
+      </div>
+    </div>
+
+    {reportLoading ? (
+      <LoadingSpinner label="Loading report..." inline />
+    ) : syncedMonthlyReport ? (
+      <>
+        <div className="monthly-simple-cards">
+          <button
+            type="button"
+            className={`monthly-simple-card${monthlyDetailKey === 'collectionIncome' ? ' monthly-simple-card--active' : ''}`}
+            onClick={() => handleMonthlyReportCardClick('collectionIncome')}
+          >
+            <span>Collection Income</span>
+            <strong>{formatMoney(syncedMonthlyReport.summary.collectionIncome)}</strong>
+          </button>
+
+          <button
+            type="button"
+            className={`monthly-simple-card${monthlyDetailKey === 'weeklyIncome' ? ' monthly-simple-card--active' : ''}`}
+            onClick={() => handleMonthlyReportCardClick('weeklyIncome')}
+          >
+            <span>Weekly Income</span>
+            <strong>{formatMoney(syncedMonthlyReport.summary.weeklyIncome)}</strong>
+          </button>
+
+          <button
+            type="button"
+            className={`monthly-simple-card${monthlyDetailKey === 'charges' ? ' monthly-simple-card--active' : ''}`}
+            onClick={() => handleMonthlyReportCardClick('charges')}
+          >
+            <span>Charges</span>
+            <strong>{formatMoney(syncedMonthlyReport.summary.chargesIncome)}</strong>
+          </button>
+
+          <button
+            type="button"
+            className={`monthly-simple-card monthly-simple-card--red${monthlyDetailKey === 'paymentsOut' ? ' monthly-simple-card--active' : ''}`}
+            onClick={() => handleMonthlyReportCardClick('paymentsOut')}
+          >
+            <span>Payments Out</span>
+            <strong>{formatMoney(syncedMonthlyReport.summary.paymentsOut)}</strong>
+          </button>
+
+          <button
+            type="button"
+            className={`monthly-simple-card monthly-simple-card--profit${monthlyDetailKey === 'monthlyProfit' ? ' monthly-simple-card--active' : ''}`}
+            onClick={() => handleMonthlyReportCardClick('monthlyProfit')}
+          >
+            <span>Monthly Profit</span>
+            <strong>{formatMoney(syncedMonthlyReport.summary.profit)}</strong>
+          </button>
+        </div>
+      </>
+    ) : (
+      <div className="monthly-empty">
+        Select a month and click Load Report.
+      </div>
+    )}
+  </section>
+
+  {monthlyDetailKey && syncedMonthlyReport && (
+    <div
+      className="monthly-detail-overlay"
+      role="presentation"
+      onClick={closeMonthlyDetailModal}
+    >
+      <section
+        className="monthly-detail-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={MONTHLY_DETAIL_LABELS[monthlyDetailKey]}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="monthly-detail-modal__header">
+          <h2>{MONTHLY_DETAIL_LABELS[monthlyDetailKey]}</h2>
+          <button
+            type="button"
+            className="monthly-detail-modal__close"
+            onClick={closeMonthlyDetailModal}
+            aria-label="Close details"
+          >
+            X
+          </button>
+        </header>
+        <div className="monthly-detail-modal__body">
+          {renderMonthlyDetailTable()}
+        </div>
+      </section>
+    </div>
+  )}
+  </>
+)}
       {tab === 'defaulters' && (
-        <section key="defaulters-tab" className="section anim-tab-in">
-          {/* ── Header ── */}
+        <>
+        <section key="defaulters-tab" className="section anim-tab-in defaulters-page">
           <div className="defaulters-header">
             <div>
               <h2>
@@ -3636,148 +3891,199 @@ export default function ManagerDashboard() {
                   <span className="defaulters-live-dot" />
                   LIVE
                 </span>
-                {/* unique customer count */}
-                <span className="defaulters-count-pill">
-                  {[...new Map(defaulters.map((d) => [String(d.clientId), d])).values()].length}
-                </span>
+                <span className="defaulters-count-pill">{groupedDefaulters.length}</span>
               </h2>
               <p className="muted-text">
-                Each customer shown once — all their unpaid weeks listed together.
+                One summary row per customer — open details to view all unpaid weeks.
               </p>
             </div>
           </div>
 
-          {/* ── Grouped table: one row per customer ── */}
-          <div className="table-wrap anim-scale-in" style={{ marginTop: '1rem' }}>
-            {defaulters.length === 0 ? (
-              <div style={{ padding: '2.5rem', textAlign: 'center', color: '#22c55e', fontSize: '0.95rem' }}>
+          <div className="table-wrap defaulters-table-wrap anim-scale-in">
+            {groupedDefaulters.length === 0 ? (
+              <div className="defaulters-empty">
                 ✓ No defaulters — all payments are up to date.
               </div>
-            ) : (() => {
-              // Group by clientId → keep order of first appearance
-              const grouped = [];
-              const seen = new Map();
-              defaulters.forEach((d) => {
-                const key = String(d.clientId);
-                if (!seen.has(key)) {
-                  seen.set(key, grouped.length);
-                  grouped.push({ ...d, pendingWeeks: [d] });
-                } else {
-                  grouped[seen.get(key)].pendingWeeks.push(d);
-                }
-              });
+            ) : (
+              <table className="defaulters-summary-table">
+                <thead>
+                  <tr>
+                    <th>Customer Name</th>
+                    <th>Place</th>
+                    <th>Total Due</th>
+                    <th>Pending Weeks</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupedDefaulters.map((d, gi) => {
+                    const totalDue = d.pendingWeeks.reduce((s, w) => s + (w.weeklyPayment || 0), 0);
+                    const anyOverdue = d.pendingWeeks.some((w) => w.isOverdue);
+                    const anyReminded = d.pendingWeeks.some((w) => w.reminderSent);
 
-              return (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Customer</th>
-                      <th>Place</th>
-                      <th>Pending Weeks</th>
-                      <th>Total Due</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grouped.map((d, gi) => {
-                      const totalDue = d.pendingWeeks.reduce((s, w) => s + (w.weeklyPayment || 0), 0);
-                      const anyOverdue = d.pendingWeeks.some((w) => w.isOverdue);
-                      const anyReminded = d.pendingWeeks.some((w) => w.reminderSent);
-                      // use most recent week's reminder message for bulk WhatsApp
-                      const lastWeek = d.pendingWeeks[d.pendingWeeks.length - 1];
-
-                      return (
-                        <tr
-                          key={d.clientId}
-                          className={anyOverdue ? 'defaulter-row--overdue' : 'defaulter-row--current'}
-                          style={{ animationDelay: `${gi * 0.04}s` }}
-                        >
-                          {/* Customer */}
-                          <td>
-                            <div className="defaulter-name-cell">
-                              <span className="defaulter-avatar">
-                                {d.profilePhoto ? (
-                                  <img src={d.profilePhoto} alt="" loading="lazy" decoding="async" />
-                                ) : (
-                                  (d.name?.[0] || '?').toUpperCase()
-                                )}
-                              </span>
-                              <div>
-                                <strong>{d.name}</strong>
-                                <span className="muted-text" style={{ fontSize: '0.72rem' }}>{d.phone}</span>
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* Place */}
-                          <td>{d.place}</td>
-
-                          {/* Pending weeks — all listed */}
-                          <td>
-                            <div className="defaulter-weeks-list">
-                              {d.pendingWeeks.map((w) => (
-                                <div key={w.paymentId} className="defaulter-week-chip">
-                                  <span className="defaulter-week-chip__label">
-                                    Week {w.weekNumber}
-                                  </span>
-                                  <span className="defaulter-week-chip__date">
-                                    {formatDate(w.weekStart)}
-                                  </span>
-                                  {w.isOverdue && (
-                                    <span className="defaulter-overdue-tag">Overdue</span>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </td>
-
-                          {/* Total due */}
-                          <td>
-                            <strong style={{ color: '#fbbf24', fontSize: '1rem' }}>
-                              {formatMoney(totalDue)}
-                            </strong>
-                            <span className="muted-text" style={{ display: 'block', fontSize: '0.68rem' }}>
-                              {d.pendingWeeks.length} week{d.pendingWeeks.length > 1 ? 's' : ''}
-                              {' × '}{formatMoney(d.weeklyPayment)}
+                    return (
+                      <tr
+                        key={d.clientId}
+                        className={anyOverdue ? 'defaulter-row--overdue' : 'defaulter-row--current'}
+                        style={{ animationDelay: `${gi * 0.04}s` }}
+                      >
+                        <td>
+                          <div className="defaulter-name-cell">
+                            <span className="defaulter-avatar">
+                              {d.profilePhoto ? (
+                                <img src={d.profilePhoto} alt="" loading="lazy" decoding="async" />
+                              ) : (
+                                (d.name?.[0] || '?').toUpperCase()
+                              )}
                             </span>
-                          </td>
-
-                          {/* Status */}
-                          <td>
-                            {anyReminded ? (
-                              <span className="badge warning">Reminded</span>
-                            ) : (
-                              <span className="badge warning">Pending</span>
-                            )}
-                          </td>
-
-                          {/* Actions — remind / WhatsApp for the most recent week */}
-                          <td className="actions">
-                            <button
-                              type="button"
-                              className="btn small warning"
-                              onClick={() => sendReminder(lastWeek.paymentId, true)}
-                            >
-                              Remind
-                            </button>
-                            <button
-                              type="button"
-                              className="btn small whatsapp"
-                              onClick={() => handleWhatsApp(d.phone, lastWeek.reminderMessage)}
-                            >
-                              WhatsApp
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              );
-            })()}
+                            <strong>{d.name}</strong>
+                          </div>
+                        </td>
+                        <td>{d.place || '-'}</td>
+                        <td>
+                          <strong className="defaulters-total-due">{formatMoney(totalDue)}</strong>
+                        </td>
+                        <td>
+                          <span className="defaulters-weeks-pill">{d.pendingWeeks.length}</span>
+                        </td>
+                        <td>
+                          {anyOverdue ? (
+                            <span className="defaulter-overdue-tag">Overdue</span>
+                          ) : anyReminded ? (
+                            <span className="badge warning">Reminded</span>
+                          ) : (
+                            <span className="badge warning">Pending</span>
+                          )}
+                        </td>
+                        <td className="actions">
+                          <button
+                            type="button"
+                            className="btn small primary defaulters-view-btn"
+                            onClick={() => setDefaulterDetailId(String(d.clientId))}
+                          >
+                            <span className="defaulters-view-btn__icon" aria-hidden="true">▼</span>
+                            View Details
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </section>
+
+        {selectedDefaulter && (() => {
+          const totalDue = selectedDefaulter.pendingWeeks.reduce(
+            (s, w) => s + (w.weeklyPayment || 0),
+            0
+          );
+          const weekCount = selectedDefaulter.pendingWeeks.length;
+
+          return (
+            <div
+              className="monthly-detail-overlay defaulter-detail-overlay"
+              role="presentation"
+              onClick={closeDefaulterDetail}
+            >
+              <section
+                className="monthly-detail-modal defaulter-detail-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-label={`${selectedDefaulter.name} pending weeks`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <header className="monthly-detail-modal__header defaulter-detail-modal__header">
+                  <div className="defaulter-detail-modal__intro">
+                    <p className="defaulter-detail-modal__eyebrow">Defaulter Details</p>
+                    <h2>{selectedDefaulter.name}</h2>
+                    <div className="defaulter-detail-modal__meta">
+                      <span>Mobile: {selectedDefaulter.phone || '-'}</span>
+                      <span>Total pending: {formatMoney(totalDue)}</span>
+                      <span>
+                        {weekCount} pending week{weekCount > 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="monthly-detail-modal__close"
+                    onClick={closeDefaulterDetail}
+                    aria-label="Close defaulter details"
+                  >
+                    X
+                  </button>
+                </header>
+
+                <div className="monthly-detail-modal__body defaulter-detail-modal__body">
+                  <div className="table-wrap defaulter-detail-weeks-table">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Week Number</th>
+                          <th>Due Date</th>
+                          <th>Weekly Amount</th>
+                          <th>Status</th>
+                          <th>Days Late</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedDefaulter.pendingWeeks.map((w) => {
+                          const daysLate = getDefaulterDaysLate(w);
+                          return (
+                            <tr key={w.paymentId} className={w.isOverdue ? 'defaulter-week-row--overdue' : ''}>
+                              <td>Week {w.weekNumber}</td>
+                              <td>{w.dueDate ? formatDate(w.dueDate) : formatDate(w.weekStart)}</td>
+                              <td>{formatMoney(w.weeklyPayment)}</td>
+                              <td>
+                                {w.isOverdue ? (
+                                  <span className="defaulter-overdue-tag">Overdue</span>
+                                ) : (
+                                  <span className="defaulter-pending-tag">Pending</span>
+                                )}
+                              </td>
+                              <td>{daysLate > 0 ? `${daysLate} day${daysLate > 1 ? 's' : ''}` : '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <footer className="defaulter-detail-modal__footer">
+                  <button
+                    type="button"
+                    className="btn small warning"
+                    onClick={handleDefaulterSendReminders}
+                    disabled={defaulterActionLoading}
+                  >
+                    {defaulterActionLoading ? 'Sending...' : 'Send Reminder'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn small whatsapp"
+                    onClick={handleDefaulterWhatsApp}
+                    disabled={defaulterActionLoading}
+                  >
+                    WhatsApp
+                  </button>
+                  <button
+                    type="button"
+                    className="btn small primary"
+                    onClick={handleDefaulterMarkAllPaid}
+                    disabled={defaulterActionLoading}
+                  >
+                    Mark as Paid
+                  </button>
+                </footer>
+              </section>
+            </div>
+          );
+        })()}
+        </>
       )}
 
       {tab === 'payment-approvals' && (
@@ -3874,7 +4180,7 @@ export default function ManagerDashboard() {
       {tab === 'weekly' && (
         <WeeklyPaymentsModule
           weekly={weekly}
-          loading={loading}
+          loading={weeklyLoading}
           bulkReminding={bulkReminding}
           formatDate={formatDate}
           formatMoney={formatMoney}
